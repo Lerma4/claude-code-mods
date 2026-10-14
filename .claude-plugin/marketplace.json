@@ -1,11 +1,12 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "claude-code-mods",
+  "description": "Mods for Claude Code",
   "owner": { "name": "Lorenzo" },
   "plugins": [
     { "name": "agent-squad", "version": "0.2.0", "source": "./agent-squad",
-      "description": "Pannello laterale con gli agenti al lavoro: nome, logo, ruolo, stato e attività corrente" },
+      "description": "Side pane listing the agents at work: nickname, icon, role, status and current activity" },
     { "name": "token-bar", "version": "0.1.0", "source": "./token-bar",
-      "description": "Barra sopra il prompt con il consumo dell'account (5h, 7gg), contesto e costo" }
+      "description": "Bar above the prompt showing account usage (5h and 7-day limits), context and cost" }
   ]
 }

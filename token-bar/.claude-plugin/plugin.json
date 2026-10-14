@@ -1,1 +1,1 @@
-{ "name": "token-bar", "version": "0.1.0", "description": "Barra sopra il prompt con il consumo dell'account (5h, 7gg), contesto e costo", "types": "./types/index.d.ts" }
+{ "name": "token-bar", "version": "0.1.0", "description": "Bar above the prompt showing account usage (5h and 7-day limits), context and cost", "types": "./types/index.d.ts" }

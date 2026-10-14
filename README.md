@@ -1,11 +1,17 @@
 # claude-code-mods
 
-Mod per Claude Code.
+A small marketplace of mods for [Claude Code](https://claude.com/claude-code).
 
-- **agent-squad**: pannello laterale con gli agenti al lavoro (nome, logo, ruolo, stato, attività corrente)
-- **token-bar**: barra sopra il prompt con il consumo dell'account (5h, 7gg), contesto e costo
+| Mod | What it does |
+|-----|--------------|
+| **agent-squad** | Side pane listing the agents at work: nickname, icon, role, status and current activity |
+| **token-bar** | Bar above the prompt showing account usage (5h and 7-day limits), context and cost |
 
-## Installazione
+The in-app labels are in Italian.
+
+## Install
+
+Inside Claude Code:
 
 ```
 /plugin marketplace add Lerma4/claude-code-mods
@@ -13,10 +19,12 @@ Mod per Claude Code.
 /plugin install token-bar@claude-code-mods
 ```
 
-Riavvia Claude Code.
+Then restart Claude Code.
 
-## Aggiornamenti
+## Update
 
-`/plugin marketplace update claude-code-mods`, oppure attiva l'auto-update del marketplace da `/plugin`.
+```
+/plugin marketplace update claude-code-mods
+```
 
-Chi modifica una mod deve alzare `version` nel suo `.claude-plugin/plugin.json`, altrimenti l'aggiornamento non viene rilevato.
+Or enable auto-update for this marketplace from the `/plugin` menu.

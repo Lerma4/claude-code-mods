@@ -1,1 +1,1 @@
-{ "name": "agent-squad", "version": "0.2.0", "description": "Pannello laterale con gli agenti al lavoro: nome simpatico, logo, ruolo, stato e attività corrente", "types": "./types/index.d.ts" }
+{ "name": "agent-squad", "version": "0.2.0", "description": "Side pane listing the agents at work: nickname, icon, role, status and current activity", "types": "./types/index.d.ts" }
