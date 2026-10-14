@@ -161,7 +161,7 @@ const order = (a: SquadAgent) => (a.id === MAIN ? 0 : a.status === 'running' ? 1
 
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
-    await $.command.register({ name: 'squadra', description: 'Mostra il pannello con gli agenti al lavoro (pulisci: toglie i finiti · rinomina [nome]: nuovi nomi a caso)' })
+    await $.command.register({ name: 'squadra', description: 'Mostra il pannello con gli agenti al lavoro (pulisci: toglie i finiti · tombola [nome]: estrae nomi nuovi)' })
     void $.ui.open({ id: PANE, title: TITLE, columns: 46 })
     $.clock.every(1000, async () => {
       if ((await read($, agents)).some(a => a.status === 'running')) {
@@ -174,14 +174,13 @@ export const register: Register = on => {
 
   on('command.run', { command: 'squadra' }, async ($, e) => {
     const [sub = '', ...rest] = e.args.trim().split(/\s+/)
-    if (sub === 'rinomina') {
+    if (sub === 'tombola') {
       const who = rest.join(' ')
-      const list = await read($, agents)
-      if (who && !list.some(a => a.id !== MAIN && a.name.toLowerCase() === who.toLowerCase())) {
-        return { text: `Nessun agente si chiama ${who} (il capo non si rinomina).` }
-      }
-      await update($, agents, l => reroll(l, who))
-      return { text: who ? `${who} ha cambiato nome.` : 'Nuovi nomi per tutta la squadra, capo escluso.' }
+      const target = (await read($, agents)).find(a => a.id !== MAIN && a.name.toLowerCase() === who.toLowerCase())
+      if (who && !target) return { text: `Nessun agente si chiama ${who} (il capo non partecipa alla tombola).` }
+      const out = await update($, agents, l => reroll(l, who))
+      if (!target) return { text: 'Tombola! Nuovi nomi estratti per tutta la squadra, capo escluso.' }
+      return { text: `Ambo! ${target.name} ora si chiama ${out.find(a => a.id === target.id)?.name}.` }
     }
     if (sub === 'pulisci') {
       await update($, agents, list => list.filter(a => a.id === MAIN || a.status === 'running'))
