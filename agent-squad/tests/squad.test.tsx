@@ -61,6 +61,11 @@ group('agent-squad', () => {
     expect(roleOf('frontend-developer').title).toBe('Frontendista')
     expect(roleOf('feedback-bot').title).toBe('Agente')
     expect(roleOf('impeccable:impeccable-finish-reviewer').title).toBe('Revisore')
+    expect(roleOf('general-purpose', 'Task S7 di Guglielmo: frontend').title).toBe('Frontendista')
+    expect(roleOf('general-purpose', 'aggiungi la colonna alla tabella clienti').title).toBe('Archivista')
+    expect(roleOf('claude', 'scrivi il testo della mail').title).toBe('Jolly')
+    expect(roleOf('general-purpose').title).toBe('Tuttofare')
+    expect(roleOf('Explore', 'fix the tests').title).toBe('Segugio')
     expect(roleOf('impeccable:impeccable-manual-edit-applier')).toEqual({ logo: '🧩', title: 'Impeccable Manual Edit Applier', role: 'Dal plugin impeccable' })
   })
 

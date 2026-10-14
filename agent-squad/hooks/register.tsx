@@ -38,37 +38,42 @@ const ROLES: Record<string, { logo: string; title: string; role: string }> = {
   claude: { logo: '🧠', title: 'Jolly', role: 'Agente generico, fa un po\' di tutto' },
 }
 
-// Custom and plugin agents have free-form names: guess the role from keywords.
+// Generic agents: the job, not the type, says what they do.
+const GENERIC = new Set(['general-purpose', 'claude', 'fork'])
+
+// Role guessed from keywords in a custom agent's name or in the task description (English or Italian).
 // First match wins, so the more specific roles come first.
 const KINDS: [RegExp, { logo: string; title: string; role: string }][] = [
-  [/secur|\bauth|pentest|vuln/, { logo: '🛡️', title: 'Guardiano', role: 'Permessi, login e vulnerabilità' }],
-  [/debug|\bbug|diagnos|\bfix/, { logo: '🐛', title: 'Acchiappabug', role: 'Riproduce e risolve i bug' }],
-  [/review|audit|critic/, { logo: '🧐', title: 'Revisore', role: 'Rilegge il codice e scova i difetti' }],
-  [/test|\bqa\b|tdd|e2e/, { logo: '🧪', title: 'Collaudatore', role: 'Scrive test e caccia regressioni' }],
-  [/\b(db|sql)\b|database|schema|migrat|prisma/, { logo: '🗄️', title: 'Archivista', role: 'Tabelle, query e migrazioni' }],
-  [/devops|deploy|docker|k8s|kube|\bci\b|infra|release|pipeline/, { logo: '🚀', title: 'Sistemista', role: 'Build, deploy e infrastruttura' }],
-  [/perf|optimi|cache/, { logo: '⚡', title: 'Ottimizzatore', role: 'Rende tutto più veloce' }],
-  [/integrat|webhook|\bsync|connector/, { logo: '🔌', title: 'Integratore', role: 'Collega sistemi esterni e API di terzi' }],
-  [/\bdata|analy|report|etl|export|import/, { logo: '📊', title: 'Analista', role: 'Dati, report ed export' }],
-  [/asset|image|icon/, { logo: '🖼️', title: 'Grafico', role: 'Prepara immagini e asset' }],
-  [/design|\bux\b|style|theme/, { logo: '💅', title: 'Designer', role: 'Cura UX e aspetto grafico' }],
-  [/front|\bui\b|react|angular|\bvue|svelte|css|component/, { logo: '🖥️', title: 'Frontendista', role: 'Schermate, form e componenti' }],
-  [/\bback|\bapi\b|server|service|endpoint/, { logo: '⚙️', title: 'Backendista', role: 'API e logica di business' }],
-  [/i18n|transl|locali/, { logo: '🌍', title: 'Traduttore', role: 'Testi e traduzioni' }],
+  [/secur|sicurezz|\bauth|login|permess|pentest|vuln/, { logo: '🛡️', title: 'Guardiano', role: 'Permessi, login e vulnerabilità' }],
+  [/debug|\bbug|diagnos|\bfix|corregg|errore/, { logo: '🐛', title: 'Acchiappabug', role: 'Riproduce e risolve i bug' }],
+  [/review|revision|rivedi|audit|critic/, { logo: '🧐', title: 'Revisore', role: 'Rilegge il codice e scova i difetti' }],
+  [/\btest(s|ing)?\b|collaud|\bqa\b|tdd|e2e|regression/, { logo: '🧪', title: 'Collaudatore', role: 'Scrive test e caccia regressioni' }],
+  [/\b(db|sql)\b|database|schema|migra|prisma|tabell|query/, { logo: '🗄️', title: 'Archivista', role: 'Tabelle, query e migrazioni' }],
+  [/devops|deploy|docker|k8s|kube|\bci\b|infra|release|rilasc|pipeline/, { logo: '🚀', title: 'Sistemista', role: 'Build, deploy e infrastruttura' }],
+  [/perf|prestazion|optimi|ottimizz|velocizz|cache/, { logo: '⚡', title: 'Ottimizzatore', role: 'Rende tutto più veloce' }],
+  [/integra|webhook|\bsync|connector/, { logo: '🔌', title: 'Integratore', role: 'Collega sistemi esterni e API di terzi' }],
+  [/\bdat[ai]\b|analy|anali|report|etl|export|import|estrazion/, { logo: '📊', title: 'Analista', role: 'Dati, report ed export' }],
+  [/asset|image|immagin|icon/, { logo: '🖼️', title: 'Grafico', role: 'Prepara immagini e asset' }],
+  [/design|\bux\b|style|stile|theme|\btema|grafic/, { logo: '💅', title: 'Designer', role: 'Cura UX e aspetto grafico' }],
+  [/front|\bui\b|react|angular|\bvue|svelte|css|component|interfacc|schermat|pagin|maschera|\bform\b/, { logo: '🖥️', title: 'Frontendista', role: 'Schermate, form e componenti' }],
+  [/\bback|\bapi\b|server|service|servizi|endpoint/, { logo: '⚙️', title: 'Backendista', role: 'API e logica di business' }],
+  [/i18n|transl|tradu|locali/, { logo: '🌍', title: 'Traduttore', role: 'Testi e traduzioni' }],
   [/\bdoc|writer|readme|changelog/, { logo: '📝', title: 'Scrivano', role: 'Documentazione e README' }],
-  [/refactor|simplif|clean/, { logo: '🧹', title: 'Spazzino', role: 'Refactoring e pulizia' }],
-  [/architect|\bplan/, { logo: '🧭', title: 'Architetto', role: "Disegna il piano d'attacco" }],
-  [/explor|search|research|find/, { logo: '🔍', title: 'Segugio', role: 'Fruga nel codice e trova file e simboli' }],
+  [/refactor|rifattor|simplif|semplific|clean|pulizi/, { logo: '🧹', title: 'Spazzino', role: 'Refactoring e pulizia' }],
+  [/architect|architett|\bplan|\bpiano/, { logo: '🧭', title: 'Architetto', role: "Disegna il piano d'attacco" }],
+  [/explor|esplor|search|research|find|\bcerca|\btrova/, { logo: '🔍', title: 'Segugio', role: 'Fruga nel codice e trova file e simboli' }],
 ]
 
 const pretty = (s: string) => s.replace(/[-_]+/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+const guess = (text: string) => KINDS.find(([re]) => re.test(text.toLowerCase()))?.[1]
 
-export const roleOf = (type: string) => {
-  if (ROLES[type]) return ROLES[type]
+export const roleOf = (type: string, description = '') => {
+  if (ROLES[type] && !GENERIC.has(type)) return ROLES[type]
   // Plugin agents are named 'plugin:agent'; the plugin name only says where it came from.
   const [plugin, agent] = type.includes(':') ? type.split(/:(.*)/) : ['', type]
-  const kind = KINDS.find(([re]) => re.test(agent.toLowerCase()))?.[1]
+  const kind = (!GENERIC.has(type) && guess(agent)) || guess(description)
   if (kind) return kind
+  if (ROLES[type]) return ROLES[type]
   return plugin
     ? { logo: '🧩', title: pretty(agent), role: `Dal plugin ${plugin}` }
     : { logo: '🤖', title: 'Agente', role: type }
@@ -258,7 +263,7 @@ export const register: Register = on => {
         <Text dimColor wrap="wrap">{busy} al lavoro · {list.length - busy} a riposo</Text>
         {list.length === 0 && <Text dimColor>Nessun agente in campo.</Text>}
         {list.map(a => {
-          const r = roleOf(a.type)
+          const r = roleOf(a.type, a.description)
           const s = STATUS[a.status]
           return (
             <Box flexDirection="column" marginTop={1}>
