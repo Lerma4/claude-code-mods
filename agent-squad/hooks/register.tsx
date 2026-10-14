@@ -148,11 +148,20 @@ const ended = (a: SquadAgent, reason: string): Partial<SquadAgent> => {
   return { status: 'failed', activity: 'Qualcosa è andato storto' }
 }
 
+// New random names for every agent but the boss, or only for the one called `who`.
+export const reroll = (list: SquadAgent[], who = '', rand = Math.random): SquadAgent[] => {
+  const out = list.map(a => ({ ...a }))
+  for (const a of out) {
+    if (a.id !== MAIN && (!who || a.name.toLowerCase() === who.toLowerCase())) a.name = pickName(out.map(b => b.name), rand)
+  }
+  return out
+}
+
 const order = (a: SquadAgent) => (a.id === MAIN ? 0 : a.status === 'running' ? 1 : a.status === 'idle' ? 2 : 3)
 
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
-    await $.command.register({ name: 'squadra', description: 'Mostra il pannello con gli agenti al lavoro (pulisci: toglie i finiti)' })
+    await $.command.register({ name: 'squadra', description: 'Mostra il pannello con gli agenti al lavoro (pulisci: toglie i finiti · rinomina [nome]: nuovi nomi a caso)' })
     void $.ui.open({ id: PANE, title: TITLE, columns: 46 })
     $.clock.every(1000, async () => {
       if ((await read($, agents)).some(a => a.status === 'running')) {
@@ -164,7 +173,17 @@ export const register: Register = on => {
   })
 
   on('command.run', { command: 'squadra' }, async ($, e) => {
-    if (e.args.trim() === 'pulisci') {
+    const [sub = '', ...rest] = e.args.trim().split(/\s+/)
+    if (sub === 'rinomina') {
+      const who = rest.join(' ')
+      const list = await read($, agents)
+      if (who && !list.some(a => a.id !== MAIN && a.name.toLowerCase() === who.toLowerCase())) {
+        return { text: `Nessun agente si chiama ${who} (il capo non si rinomina).` }
+      }
+      await update($, agents, l => reroll(l, who))
+      return { text: who ? `${who} ha cambiato nome.` : 'Nuovi nomi per tutta la squadra, capo escluso.' }
+    }
+    if (sub === 'pulisci') {
       await update($, agents, list => list.filter(a => a.id === MAIN || a.status === 'running'))
       return { text: 'Squadra ripulita: restano solo gli agenti al lavoro.' }
     }

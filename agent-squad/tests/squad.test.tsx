@@ -1,6 +1,6 @@
 import { describe as group, expect, mock, test } from 'claude-code/testing'
 
-import { describe, elapsed, pickName, roleOf, shortModel } from '../hooks/register'
+import { describe, elapsed, pickName, reroll, roleOf, shortModel } from '../hooks/register'
 
 const PANE = {
   title: 'La Squadra',
@@ -35,6 +35,20 @@ group('agent-squad', () => {
     expect(pickName([], () => 0)).toBe('Gigi Grep')
     expect(pickName(['Gigi Grep'], () => 0)).toBe('Rita Regex')
     expect(pickName([], () => 0.999)).toBe('Gina Git')
+  })
+
+  test('reroll renames everyone but the boss, or just one agent', async () => {
+    const row = (id: string, name: string) => ({ id, name, type: 'x', description: '', status: 'idle', activity: '' }) as const
+    const list = [row('main', 'Il Capo'), row('a1', 'Gigi Grep'), row('a2', 'Rita Regex')]
+    const all = reroll(list, '', () => 0)
+    expect(all[0].name).toBe('Il Capo')
+    expect(all[1].name).not.toBe('Gigi Grep')
+    expect(all[2].name).not.toBe('Rita Regex')
+    expect(new Set(all.map(a => a.name)).size).toBe(3)
+    const one = reroll(list, 'rita regex', () => 0)
+    expect(one[1].name).toBe('Gigi Grep')
+    expect(one[2].name).not.toBe('Rita Regex')
+    expect(reroll(list, 'Il Capo')[0].name).toBe('Il Capo')
   })
 
   test('roleOf guesses fullstack roles from the agent name', async () => {
