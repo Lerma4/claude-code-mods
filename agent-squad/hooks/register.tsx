@@ -161,7 +161,7 @@ const order = (a: SquadAgent) => (a.id === MAIN ? 0 : a.status === 'running' ? 1
 
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
-    await $.command.register({ name: 'squadra', description: 'Mostra il pannello con gli agenti al lavoro (pulisci: toglie i finiti · tombola [nome]: estrae nomi nuovi)' })
+    await $.command.register({ name: 'squadra', description: 'Mostra il pannello con gli agenti al lavoro', argumentHint: '[pulisci | tombola [nome]]' })
     void $.ui.open({ id: PANE, title: TITLE, columns: 46 })
     $.clock.every(1000, async () => {
       if ((await read($, agents)).some(a => a.status === 'running')) {
