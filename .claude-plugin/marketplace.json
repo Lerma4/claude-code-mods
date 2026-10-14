@@ -1,0 +1,11 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "claude-code-mods",
+  "owner": { "name": "Lorenzo" },
+  "plugins": [
+    { "name": "agent-squad", "version": "0.2.0", "source": "./agent-squad",
+      "description": "Pannello laterale con gli agenti al lavoro: nome, logo, ruolo, stato e attività corrente" },
+    { "name": "token-bar", "version": "0.1.0", "source": "./token-bar",
+      "description": "Barra sopra il prompt con il consumo dell'account (5h, 7gg), contesto e costo" }
+  ]
+}

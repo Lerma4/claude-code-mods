@@ -1,0 +1,220 @@
+import { atom, read, update } from 'claude-code'
+import type { EngineInterface, Register } from 'claude-code'
+
+import type { SquadAgent, SquadStatus } from '../types'
+
+const PANE = 'agent-squad'
+const TITLE = 'La Squadra'
+const MAX = 20
+const MAIN = 'main'
+const agents = atom({ plugin: 'agent-squad', key: 'agents' } as const, [])
+// Ticks once a second while someone is at work, so the running clocks redraw.
+const now = atom({ plugin: 'agent-squad', key: 'now' } as const, 0)
+
+const NAMES = [
+  'Gigi Grep', 'Rita Regex', 'Beppe Bash', 'Tina Token', 'Nando Null',
+  'Pina Pipeline', 'Ugo Undefined', 'Franca Fork', 'Mimmo Merge', 'Lella Lambda',
+  'Tonino Timeout', 'Carla Cache', 'Sandro Stacktrace', 'Wanda Wildcard',
+  'Peppino Ping', 'Ornella Overflow',
+]
+
+const ROLES: Record<string, { logo: string; title: string; role: string }> = {
+  main: { logo: '👑', title: 'Coordinatore', role: 'Parla con te e smista il lavoro' },
+  Explore: { logo: '🔍', title: 'Segugio', role: 'Fruga nel codice e trova file e simboli' },
+  Plan: { logo: '🧭', title: 'Architetto', role: "Disegna il piano d'attacco" },
+  'general-purpose': { logo: '🔧', title: 'Tuttofare', role: 'Ricerche e lavori in più passi' },
+  'claude-code-guide': { logo: '📖', title: 'Bibliotecario', role: 'Conosce a memoria la documentazione' },
+  fork: { logo: '🧬', title: 'Clone', role: 'Una copia del capo con lo stesso contesto' },
+  'statusline-setup': { logo: '🎨', title: 'Decoratore', role: 'Sistema la status line' },
+  teammate: { logo: '🤝', title: 'Compagno di squadra', role: 'Lavora in parallelo nel team' },
+}
+const roleOf = (type: string) => ROLES[type] ?? { logo: '🤖', title: 'Agente', role: type }
+
+const STATUS: Record<SquadStatus, { icon: string; label: string; color: string }> = {
+  running: { icon: '●', label: 'al lavoro', color: 'claude' },
+  idle: { icon: '○', label: 'in attesa', color: 'subtle' },
+  completed: { icon: '✔', label: 'finito', color: 'success' },
+  failed: { icon: '✖', label: 'errore', color: 'error' },
+  killed: { icon: '■', label: 'fermato', color: 'inactive' },
+}
+
+// The tool argument that best says what a call is doing, first match wins.
+const HINTS = ['description', 'command', 'file_path', 'pattern', 'url', 'query', 'path', 'prompt']
+
+export const describe = (e: { tool: string }): string => {
+  const args = e as unknown as Record<string, unknown>
+  const hint = HINTS.map(k => args[k]).find((v): v is string => typeof v === 'string' && v.trim() !== '')
+  return hint ? `${e.tool}: ${hint.replace(/\s+/g, ' ').trim()}` : e.tool
+}
+
+// 'claude-haiku-4-5-20251001' -> 'haiku 4.5'; an alias ('haiku') stays as it is.
+export const shortModel = (model: string): string =>
+  model
+    .replace(/^claude-/, '')
+    .replace(/\[.*\]$/, '')
+    .replace(/-\d{8}$/, '')
+    .replace(/-(\d+)-(\d+)$/, ' $1.$2')
+    .replace(/-(\d+)$/, ' $1')
+
+// 42_000 -> '42s', 125_000 -> '2m 05s', 3_720_000 -> '1h 02m'.
+export const elapsed = (ms: number): string => {
+  const s = Math.max(0, Math.floor(ms / 1000))
+  const pad = (n: number) => String(n).padStart(2, '0')
+  if (s < 60) return `${s}s`
+  if (s < 3600) return `${Math.floor(s / 60)}m ${pad(s % 60)}s`
+  return `${Math.floor(s / 3600)}h ${pad(Math.floor(s / 60) % 60)}m`
+}
+
+// Starts the clock of a row that was not already running.
+const start = async ($: EngineInterface, id: string, patch: Partial<SquadAgent>) => {
+  const t = await $.clock.now()
+  await touch($, id, a => ({ ...patch, status: 'running', since: a.status === 'running' && a.since ? a.since : t }))
+}
+
+const fresh = (id: string, list: SquadAgent[]): SquadAgent =>
+  id === MAIN
+    ? { id, name: 'Il Capo', type: 'main', description: '', status: 'idle', activity: '' }
+    : {
+        id,
+        name: NAMES[list.filter(a => a.id !== MAIN).length % NAMES.length] ?? 'Agente X',
+        type: 'agent',
+        description: '',
+        status: 'running',
+        activity: '',
+      }
+
+// Patch the row with this id, adding it first when it is new; trims the oldest finished rows.
+const touch = ($: EngineInterface, id: string, patch: (a: SquadAgent) => Partial<SquadAgent>) =>
+  update($, agents, list => {
+    const known = list.some(a => a.id === id)
+    const all = known ? list : [...list, fresh(id, list)]
+    const out = all.map(a => (a.id === id ? { ...a, ...patch(a) } : a))
+    while (out.length > MAX) {
+      const old = out.findIndex(a => a.id !== MAIN && a.status !== 'running')
+      if (old < 0) break
+      out.splice(old, 1)
+    }
+    return out
+  })
+
+const ended = (a: SquadAgent, reason: string): Partial<SquadAgent> => {
+  if (a.id === MAIN || a.type === 'teammate') return { status: 'idle', activity: 'Aspetta istruzioni' }
+  if (reason === 'answer') return { status: 'completed', activity: 'Missione compiuta' }
+  if (reason === 'aborted') return { status: 'killed', activity: 'Interrotto' }
+  return { status: 'failed', activity: 'Qualcosa è andato storto' }
+}
+
+const order = (a: SquadAgent) => (a.id === MAIN ? 0 : a.status === 'running' ? 1 : a.status === 'idle' ? 2 : 3)
+
+export const register: Register = on => {
+  on('session.start', async ($, e, next) => {
+    await $.command.register({ name: 'squadra', description: 'Mostra il pannello con gli agenti al lavoro (pulisci: toglie i finiti)' })
+    void $.ui.open({ id: PANE, title: TITLE, columns: 46 })
+    $.clock.every(1000, async () => {
+      if ((await read($, agents)).some(a => a.status === 'running')) {
+        const t = await $.clock.now()
+        await update($, now, () => t)
+      }
+    })
+    return next(e)
+  })
+
+  on('command.run', { command: 'squadra' }, async ($, e) => {
+    if (e.args.trim() === 'pulisci') {
+      await update($, agents, list => list.filter(a => a.id === MAIN || a.status === 'running'))
+      return { text: 'Squadra ripulita: restano solo gli agenti al lavoro.' }
+    }
+    await $.ui.open({ id: PANE, title: TITLE, columns: 46 })
+    return { text: 'Pannello della squadra aperto.' }
+  })
+
+  on('agent.spawn', async ($, e, next) => {
+    const started = await next(e)
+    if (started.agentId) {
+      await start($, started.agentId, {
+        type: e.subagentType,
+        description: e.description,
+        model: started.model,
+        activity: 'Si scalda i muscoli…',
+      })
+    }
+    return started
+  })
+
+  on('tool.call', async ($, e, next) => {
+    const id = e.agentId ?? MAIN
+    const list = await read($, agents)
+    if (id !== MAIN && !list.some(a => a.id === id)) {
+      // Not spawned while we watched (a reload, a teammate): adopt it only if the engine lists it.
+      const info = (await $.agent.list()).find(a => a.id === id)
+      if (!info) return next(e)
+      await touch($, id, () => ({ type: info.type, description: info.description }))
+    }
+    await start($, id, { activity: describe(e) })
+    return next(e)
+  })
+
+  // Every model request names the model it goes to: the live truth for the main loop and each subagent.
+  on('turn.step', async function* ($, e, next) {
+    const id = e.agentId ?? MAIN
+    const row = (await read($, agents)).find(a => a.id === id)
+    const effort = e.effort === undefined ? undefined : String(e.effort)
+    if ((row || id === MAIN) && (row?.model !== e.model || row?.effort !== effort)) {
+      await touch($, id, () => ({ model: e.model, effort }))
+    }
+    return yield* next(e)
+  })
+
+  on('turn.start', async ($, e, next) => {
+    await start($, MAIN, { activity: 'Ci sta pensando…' })
+    return next(e)
+  })
+
+  on('turn.complete', async ($, e, next) => {
+    const id = e.agentId ?? MAIN
+    const list = await read($, agents)
+    if (id === MAIN || list.some(a => a.id === id)) {
+      const t = await $.clock.now()
+      await touch($, id, a => ({ ...ended(a, e.reason), since: undefined, lastMs: e.durationMs || (a.since ? t - a.since : a.lastMs) }))
+    }
+    return next(e)
+  })
+
+  on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
+    const { Box, Text } = $.ui.resolve(e)
+    const list = [...(await read($, agents))].sort((a, b) => order(a) - order(b))
+    const busy = list.filter(a => a.status === 'running').length
+    await read($, now) // subscribes the pane to the ticks
+    const t = await $.clock.now()
+    // Running: how long so far. Otherwise: how long the last task took.
+    const timer = (a: SquadAgent) =>
+      a.status === 'running' ? (a.since ? ` · ${elapsed(t - a.since)}` : '') : a.lastMs !== undefined ? ` · ${elapsed(a.lastMs)}` : ''
+
+    return (
+      <Box flexDirection="column">
+        <Text bold color="claude">⚡ La Squadra</Text>
+        <Text dimColor wrap="wrap">{busy} al lavoro · {list.length - busy} a riposo</Text>
+        {list.length === 0 && <Text dimColor>Nessun agente in campo.</Text>}
+        {list.map(a => {
+          const r = roleOf(a.type)
+          const s = STATUS[a.status]
+          return (
+            <Box flexDirection="column" marginTop={1}>
+              {/* Wraps instead of truncating: in a narrow pane the status drops below the name. */}
+              <Box flexWrap="wrap" justifyContent="space-between" columnGap={1}>
+                <Box flexWrap="wrap" flexShrink={1}>
+                  <Text bold wrap="wrap">{r.logo} {a.name}</Text>
+                  {a.model && <Text color="suggestion" wrap="wrap"> · {shortModel(a.model)}</Text>}
+                  {a.effort && <Text color="warning" wrap="wrap"> · {a.effort}</Text>}
+                </Box>
+                <Text color={s.color} wrap="wrap">{s.icon} {s.label}{timer(a)}</Text>
+              </Box>
+              <Text dimColor italic wrap="wrap">{r.title} · {a.description || r.role}</Text>
+              <Text color={a.status === 'running' ? 'text' : 'subtle'} wrap="wrap">↳ {a.activity || '—'}</Text>
+            </Box>
+          )
+        })}
+      </Box>
+    )
+  })
+}

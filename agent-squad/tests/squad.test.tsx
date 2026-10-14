@@ -1,0 +1,60 @@
+import { describe as group, expect, mock, test } from 'claude-code/testing'
+
+import { describe, elapsed, shortModel } from '../hooks/register'
+
+const PANE = {
+  title: 'La Squadra',
+  isFocused: false,
+  bodyColumns: 46,
+  placement: 'dock',
+  scroll: { offset: 0, bodyRows: 30 },
+  view: {},
+} as const
+
+group('agent-squad', () => {
+  test('describe picks the most telling argument', async () => {
+    expect(describe({ tool: 'Bash', command: 'ls  -la\n /tmp' } as never)).toBe('Bash: ls -la /tmp')
+    expect(describe({ tool: 'Read', file_path: 'a.ts' } as never)).toBe('Read: a.ts')
+    expect(describe({ tool: 'TodoWrite' })).toBe('TodoWrite')
+  })
+
+  test('shortModel keeps family and version', async () => {
+    expect(shortModel('claude-haiku-4-5-20251001')).toBe('haiku 4.5')
+    expect(shortModel('claude-opus-5-5')).toBe('opus 5.5')
+    expect(shortModel('claude-sonnet-4-5[1m]')).toBe('sonnet 4.5')
+    expect(shortModel('haiku')).toBe('haiku')
+  })
+
+  test('elapsed reads like a stopwatch', async () => {
+    expect(elapsed(42_000)).toBe('42s')
+    expect(elapsed(125_000)).toBe('2m 05s')
+    expect(elapsed(3_720_000)).toBe('1h 02m')
+  })
+
+  for (const surface of ['terminal', 'desktop'] as const) {
+    test(`a spawned agent shows up with name, role and status (${surface})`, async ($, on) => {
+      on('agent.spawn', () => ({ model: 'claude-haiku-4-5-20251001', agentId: 'a1' }))
+      on('turn.complete', () => ({ text: '' }))
+      const clock = mock.clock(on, { now: 1_000_000 })
+      on('turn.step', async function* (_$, e) {
+        return { turnId: e.turnId, index: e.index, answer: '', toolUses: [], stopReason: 'end_turn', usage: null }
+      })
+
+      await $.agent.spawn({ prompt: 'cerca', description: 'trova i file di config', subagentType: 'Explore' } as never)
+      const ui = await $.ui.mount({ plugin: 'agent-squad', surface, component: 'Pane', requestId: 'agent-squad', props: PANE })
+      expect(await ui.find({ text: 'Gigi Grep' })).toBeDefined()
+      expect(await ui.find({ text: 'Segugio · trova i file di config' })).toBeDefined()
+      expect(await ui.find({ text: '● al lavoro' })).toBeDefined()
+      expect(await ui.find({ text: ' · haiku 4.5' })).toBeDefined()
+
+      const step = { turnId: 't1', index: 0, model: 'claude-haiku-4-5', effort: 'high', messageCount: 1, agentId: 'a1' } as const
+      await clock.advance(42_000)
+      for await (const _ of $.turn.step(step));
+      expect(await ui.find({ text: ' · high' })).toBeDefined()
+      expect(await ui.find({ text: '● al lavoro · 42s' })).toBeDefined()
+
+      await $.turn.complete({ agentId: 'a1', reason: 'answer', answer: 'ok', durationMs: 125_000, isAborted: false, turnId: 't1' })
+      expect(await ui.find({ text: '✔ finito · 2m 05s' })).toBeDefined()
+    })
+  }
+})
