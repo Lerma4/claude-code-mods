@@ -1,6 +1,6 @@
 # claude-code-mods
 
-A small marketplace of mods for [Claude Code](https://claude.com/claude-code).
+A growing collection of mods for [Claude Code](https://claude.com/claude-code).
 
 | Mod | What it does |
 |-----|--------------|
