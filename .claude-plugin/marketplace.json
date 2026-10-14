@@ -4,7 +4,7 @@
   "description": "Mods for Claude Code",
   "owner": { "name": "Lorenzo" },
   "plugins": [
-    { "name": "agent-squad", "version": "0.2.1", "source": "./agent-squad",
+    { "name": "agent-squad", "version": "0.2.2", "source": "./agent-squad",
       "description": "Side pane listing the agents at work: nickname, icon, role, status and current activity" },
     { "name": "token-bar", "version": "0.1.0", "source": "./token-bar",
       "description": "Bar above the prompt showing account usage (5h and 7-day limits), context and cost" }

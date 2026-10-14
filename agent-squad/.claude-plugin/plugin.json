@@ -1,1 +1,1 @@
-{ "name": "agent-squad", "version": "0.2.1", "description": "Side pane listing the agents at work: nickname, icon, role, status and current activity", "types": "./types/index.d.ts" }
+{ "name": "agent-squad", "version": "0.2.2", "description": "Side pane listing the agents at work: nickname, icon, role, status and current activity", "types": "./types/index.d.ts" }

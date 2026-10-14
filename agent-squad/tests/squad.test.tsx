@@ -1,6 +1,6 @@
 import { describe as group, expect, mock, test } from 'claude-code/testing'
 
-import { describe, elapsed, roleOf, shortModel } from '../hooks/register'
+import { describe, elapsed, pickName, roleOf, shortModel } from '../hooks/register'
 
 const PANE = {
   title: 'La Squadra',
@@ -31,6 +31,12 @@ group('agent-squad', () => {
     expect(elapsed(3_720_000)).toBe('1h 02m')
   })
 
+  test('pickName is random and skips names already in use', async () => {
+    expect(pickName([], () => 0)).toBe('Gigi Grep')
+    expect(pickName(['Gigi Grep'], () => 0)).toBe('Rita Regex')
+    expect(pickName([], () => 0.999)).toBe('Gina Git')
+  })
+
   test('roleOf guesses fullstack roles from the agent name', async () => {
     expect(roleOf('Explore').title).toBe('Segugio')
     expect(roleOf('claude').title).toBe('Jolly')
@@ -55,7 +61,6 @@ group('agent-squad', () => {
 
       await $.agent.spawn({ prompt: 'cerca', description: 'trova i file di config', subagentType: 'Explore' } as never)
       const ui = await $.ui.mount({ plugin: 'agent-squad', surface, component: 'Pane', requestId: 'agent-squad', props: PANE })
-      expect(await ui.find({ text: 'Gigi Grep' })).toBeDefined()
       expect(await ui.find({ text: 'Segugio · trova i file di config' })).toBeDefined()
       expect(await ui.find({ text: '● al lavoro' })).toBeDefined()
       expect(await ui.find({ text: ' · haiku 4.5' })).toBeDefined()

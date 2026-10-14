@@ -15,8 +15,16 @@ const NAMES = [
   'Gigi Grep', 'Rita Regex', 'Beppe Bash', 'Tina Token', 'Nando Null',
   'Pina Pipeline', 'Ugo Undefined', 'Franca Fork', 'Mimmo Merge', 'Lella Lambda',
   'Tonino Timeout', 'Carla Cache', 'Sandro Stacktrace', 'Wanda Wildcard',
-  'Peppino Ping', 'Ornella Overflow',
+  'Peppino Ping', 'Ornella Overflow', 'Dario Deploy', 'Silvia Socket',
+  'Rocco Rollback', 'Gina Git',
 ]
+
+// A random name not already on screen; repeats only when every name is taken.
+export const pickName = (taken: string[], rand = Math.random): string => {
+  const free = NAMES.filter(n => !taken.includes(n))
+  const pool = free.length ? free : NAMES
+  return pool[Math.floor(rand() * pool.length)]
+}
 
 const ROLES: Record<string, { logo: string; title: string; role: string }> = {
   main: { logo: '👑', title: 'Coordinatore', role: 'Parla con te e smista il lavoro' },
@@ -112,7 +120,7 @@ const fresh = (id: string, list: SquadAgent[]): SquadAgent =>
     ? { id, name: 'Il Capo', type: 'main', description: '', status: 'idle', activity: '' }
     : {
         id,
-        name: NAMES[list.filter(a => a.id !== MAIN).length % NAMES.length] ?? 'Agente X',
+        name: pickName(list.map(a => a.name)),
         type: 'agent',
         description: '',
         status: 'running',
