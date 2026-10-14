@@ -27,8 +27,44 @@ const ROLES: Record<string, { logo: string; title: string; role: string }> = {
   fork: { logo: '🧬', title: 'Clone', role: 'Una copia del capo con lo stesso contesto' },
   'statusline-setup': { logo: '🎨', title: 'Decoratore', role: 'Sistema la status line' },
   teammate: { logo: '🤝', title: 'Compagno di squadra', role: 'Lavora in parallelo nel team' },
+  claude: { logo: '🧠', title: 'Jolly', role: 'Agente generico, fa un po\' di tutto' },
 }
-const roleOf = (type: string) => ROLES[type] ?? { logo: '🤖', title: 'Agente', role: type }
+
+// Custom and plugin agents have free-form names: guess the role from keywords.
+// First match wins, so the more specific roles come first.
+const KINDS: [RegExp, { logo: string; title: string; role: string }][] = [
+  [/secur|\bauth|pentest|vuln/, { logo: '🛡️', title: 'Guardiano', role: 'Permessi, login e vulnerabilità' }],
+  [/debug|\bbug|diagnos|\bfix/, { logo: '🐛', title: 'Acchiappabug', role: 'Riproduce e risolve i bug' }],
+  [/review|audit|critic/, { logo: '🧐', title: 'Revisore', role: 'Rilegge il codice e scova i difetti' }],
+  [/test|\bqa\b|tdd|e2e/, { logo: '🧪', title: 'Collaudatore', role: 'Scrive test e caccia regressioni' }],
+  [/\b(db|sql)\b|database|schema|migrat|prisma/, { logo: '🗄️', title: 'Archivista', role: 'Tabelle, query e migrazioni' }],
+  [/devops|deploy|docker|k8s|kube|\bci\b|infra|release|pipeline/, { logo: '🚀', title: 'Sistemista', role: 'Build, deploy e infrastruttura' }],
+  [/perf|optimi|cache/, { logo: '⚡', title: 'Ottimizzatore', role: 'Rende tutto più veloce' }],
+  [/integrat|webhook|\bsync|connector/, { logo: '🔌', title: 'Integratore', role: 'Collega sistemi esterni e API di terzi' }],
+  [/\bdata|analy|report|etl|export|import/, { logo: '📊', title: 'Analista', role: 'Dati, report ed export' }],
+  [/asset|image|icon/, { logo: '🖼️', title: 'Grafico', role: 'Prepara immagini e asset' }],
+  [/design|\bux\b|style|theme/, { logo: '💅', title: 'Designer', role: 'Cura UX e aspetto grafico' }],
+  [/front|\bui\b|react|angular|\bvue|svelte|css|component/, { logo: '🖥️', title: 'Frontendista', role: 'Schermate, form e componenti' }],
+  [/\bback|\bapi\b|server|service|endpoint/, { logo: '⚙️', title: 'Backendista', role: 'API e logica di business' }],
+  [/i18n|transl|locali/, { logo: '🌍', title: 'Traduttore', role: 'Testi e traduzioni' }],
+  [/\bdoc|writer|readme|changelog/, { logo: '📝', title: 'Scrivano', role: 'Documentazione e README' }],
+  [/refactor|simplif|clean/, { logo: '🧹', title: 'Spazzino', role: 'Refactoring e pulizia' }],
+  [/architect|\bplan/, { logo: '🧭', title: 'Architetto', role: "Disegna il piano d'attacco" }],
+  [/explor|search|research|find/, { logo: '🔍', title: 'Segugio', role: 'Fruga nel codice e trova file e simboli' }],
+]
+
+const pretty = (s: string) => s.replace(/[-_]+/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+
+export const roleOf = (type: string) => {
+  if (ROLES[type]) return ROLES[type]
+  // Plugin agents are named 'plugin:agent'; the plugin name only says where it came from.
+  const [plugin, agent] = type.includes(':') ? type.split(/:(.*)/) : ['', type]
+  const kind = KINDS.find(([re]) => re.test(agent.toLowerCase()))?.[1]
+  if (kind) return kind
+  return plugin
+    ? { logo: '🧩', title: pretty(agent), role: `Dal plugin ${plugin}` }
+    : { logo: '🤖', title: 'Agente', role: type }
+}
 
 const STATUS: Record<SquadStatus, { icon: string; label: string; color: string }> = {
   running: { icon: '●', label: 'al lavoro', color: 'claude' },

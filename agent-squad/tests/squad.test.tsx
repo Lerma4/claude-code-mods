@@ -1,6 +1,6 @@
 import { describe as group, expect, mock, test } from 'claude-code/testing'
 
-import { describe, elapsed, shortModel } from '../hooks/register'
+import { describe, elapsed, roleOf, shortModel } from '../hooks/register'
 
 const PANE = {
   title: 'La Squadra',
@@ -29,6 +29,19 @@ group('agent-squad', () => {
     expect(elapsed(42_000)).toBe('42s')
     expect(elapsed(125_000)).toBe('2m 05s')
     expect(elapsed(3_720_000)).toBe('1h 02m')
+  })
+
+  test('roleOf guesses fullstack roles from the agent name', async () => {
+    expect(roleOf('Explore').title).toBe('Segugio')
+    expect(roleOf('claude').title).toBe('Jolly')
+    expect(roleOf('backend-architect').title).toBe('Backendista')
+    expect(roleOf('database-optimizer').title).toBe('Archivista')
+    expect(roleOf('security-reviewer').title).toBe('Guardiano')
+    expect(roleOf('code-reviewer').title).toBe('Revisore')
+    expect(roleOf('frontend-developer').title).toBe('Frontendista')
+    expect(roleOf('feedback-bot').title).toBe('Agente')
+    expect(roleOf('impeccable:impeccable-finish-reviewer').title).toBe('Revisore')
+    expect(roleOf('impeccable:impeccable-manual-edit-applier')).toEqual({ logo: '🧩', title: 'Impeccable Manual Edit Applier', role: 'Dal plugin impeccable' })
   })
 
   for (const surface of ['terminal', 'desktop'] as const) {
