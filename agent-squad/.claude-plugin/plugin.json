@@ -1,1 +1,14 @@
-{ "name": "agent-squad", "version": "0.4.0", "description": "Side pane listing the agents at work: nickname, icon, role, status and current activity", "types": "./types/index.d.ts" }
+{
+  "name": "agent-squad",
+  "version": "0.6.0",
+  "description": "Side pane listing the agents at work, plus a live browser map of their flow, files touched and crucial files, with a history of past sessions",
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "keepSessions": {
+      "type": "number",
+      "title": "Sessions with full flow",
+      "description": "How many recent sessions keep their full flow (graph, diffs, timeline); older ones keep only their list of modified files",
+      "default": 20
+    }
+  }
+}

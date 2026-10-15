@@ -4,7 +4,7 @@ A growing collection of mods for [Claude Code](https://claude.com/claude-code).
 
 | Mod | What it does |
 |-----|--------------|
-| **agent-squad** | Side pane listing the agents at work: nickname, icon, role, status and current activity |
+| **agent-squad** | Side pane listing the agents at work: nickname, icon, role, status and current activity. `/squadra flusso` (or a click on an agent) opens a live map in the browser: call graph, timeline, files touched and crucial files. `/squadra storico` lists past sessions and the files each one changed (Windows only for now) |
 | **token-bar** | Bar above the prompt showing account usage (5h and 7-day limits), context and cost |
 
 The in-app labels are in Italian.

@@ -1,0 +1,323 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent Flow</title>
+<style>
+:root {
+  --bg: #0d1117; --panel: #161b22; --line: #30363d; --text: #e6edf3; --dim: #8b949e;
+  --read: #58a6ff; --search: #a371f7; --edit: #f0883e; --write: #3fb950; --verify: #d29922;
+  --shell: #8b949e; --agent: #db61a2; --other: #6e7681; --err: #f85149; --accent: #d97757;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 13px/1.4 system-ui, "Segoe UI", sans-serif; }
+body { display: grid; grid-template-rows: auto 1fr 170px; height: 100vh; }
+header { display: flex; align-items: center; gap: 14px; padding: 8px 14px; border-bottom: 1px solid var(--line); background: var(--panel); flex-wrap: wrap; }
+header h1 { font-size: 15px; margin: 0; color: var(--accent); }
+.chip { padding: 2px 8px; border: 1px solid var(--line); border-radius: 10px; color: var(--dim); }
+.chip b { color: var(--text); }
+.live { width: 8px; height: 8px; border-radius: 50%; background: var(--write); display: inline-block; margin-right: 6px; }
+.live.stale { background: var(--dim); }
+.legend { display: flex; gap: 6px; margin-left: auto; flex-wrap: wrap; }
+.legend button { background: none; border: 1px solid var(--line); color: var(--text); border-radius: 10px; padding: 2px 8px; cursor: pointer; font: inherit; }
+.legend button.off { opacity: .35; }
+.legend i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; }
+button.act { background: var(--panel); border: 1px solid var(--line); color: var(--text); border-radius: 6px; padding: 3px 9px; cursor: pointer; font: inherit; }
+button.act.on { border-color: var(--accent); color: var(--accent); }
+main { display: grid; grid-template-columns: 1fr 380px; min-height: 0; }
+#canvas { position: relative; overflow: hidden; cursor: grab; }
+#canvas.drag { cursor: grabbing; }
+#canvas svg { width: 100%; height: 100%; display: block; }
+.node { cursor: pointer; }
+.node text { pointer-events: none; }
+.dim { opacity: .15; }
+.sel circle, .sel rect { stroke: #fff; stroke-width: 3; }
+aside { border-left: 1px solid var(--line); background: var(--panel); display: flex; flex-direction: column; min-height: 0; }
+.tabs { display: flex; border-bottom: 1px solid var(--line); }
+.tabs button { flex: 1; background: none; border: 0; color: var(--dim); padding: 8px; cursor: pointer; font: inherit; border-bottom: 2px solid transparent; }
+.tabs button.on { color: var(--text); border-color: var(--accent); }
+.pane { overflow: auto; padding: 10px 12px; flex: 1; display: none; }
+.pane.on { display: block; }
+.k { color: var(--dim); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; margin-top: 10px; }
+pre { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 8px; overflow: auto; max-height: 260px; white-space: pre-wrap; word-break: break-word; font: 12px/1.35 Consolas, monospace; margin: 4px 0; }
+.del { color: #ffa198; background: #3d1418; display: block; }
+.add { color: #7ee787; background: #12261e; display: block; }
+.frow { padding: 5px 6px; border-radius: 6px; cursor: pointer; display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; }
+.frow:hover, .frow.on { background: #21262d; }
+.frow .p { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; }
+.frow .why { grid-column: 1 / -1; color: var(--dim); font-size: 11px; }
+.bar { height: 4px; border-radius: 2px; grid-column: 1 / -1; }
+.dir { color: var(--dim); margin: 10px 0 2px; font-size: 12px; }
+.log { padding: 4px 6px; border-radius: 6px; cursor: pointer; display: flex; gap: 8px; }
+.log:hover { background: #21262d; }
+.log .t { color: var(--dim); font: 11px Consolas, monospace; flex: none; padding-top: 1px; }
+.log.prompt { color: var(--accent); }
+.badge { font-size: 11px; padding: 0 6px; border-radius: 8px; border: 1px solid var(--line); }
+#timeline { border-top: 1px solid var(--line); overflow: auto; position: relative; background: var(--panel); }
+#timeline svg { display: block; }
+.empty { color: var(--dim); padding: 30px; text-align: center; }
+a { color: var(--read); cursor: pointer; }
+</style>
+</head>
+<body>
+<header>
+  <h1>⚡ Agent Flow</h1>
+  <span class="chip"><span class="live" id="live"></span><span id="upd">in attesa…</span></span>
+  <span class="chip">agenti <b id="sA">0</b></span>
+  <span class="chip">chiamate <b id="sC">0</b></span>
+  <span class="chip">file modificati <b id="sF">0</b></span>
+  <span class="chip">errori <b id="sE">0</b></span>
+  <button class="act on" id="follow" title="Segue l'ultima chiamata">segui live</button>
+  <button class="act" id="fit">adatta</button>
+  <a class="act" href="../../index.html" style="text-decoration:none;padding:3px 9px;border:1px solid var(--line);border-radius:6px;color:var(--text)">📚 Storico</a>
+  <div class="legend" id="legend"></div>
+</header>
+<main>
+  <div id="canvas"><svg id="svg"><g id="world"></g></svg></div>
+  <aside>
+    <div class="tabs">
+      <button data-tab="detail" class="on">Dettaglio</button>
+      <button data-tab="files">File</button>
+      <button data-tab="log">Trascrizione</button>
+    </div>
+    <div class="pane on" id="detail"><div class="empty">Clicca un agente o una chiamata nel grafo.</div></div>
+    <div class="pane" id="files"></div>
+    <div class="pane" id="log"></div>
+  </aside>
+</main>
+<div id="timeline"></div>
+<script>
+const KINDS = {
+  read: ['Lettura', 'R'], search: ['Ricerca', 'S'], edit: ['Modifica', 'E'], write: ['Creazione', 'W'],
+  verify: ['Verifica', 'T'], shell: ['Shell', '$'], agent: ['Subagent', 'A'], other: ['Altro', '·'],
+}
+const PHASE = { read: 'esplora', search: 'esplora', edit: 'modifica', write: 'modifica', verify: 'verifica' }
+const PHASE_ICON = { esplora: '🔍 esplora', modifica: '✏️ modifica', verifica: '🧪 verifica' }
+const STATUS = { running: '● al lavoro', idle: '○ in attesa', completed: '✔ finito', failed: '✖ errore', killed: '■ fermato' }
+const col = k => `var(--${k})`
+const $ = id => document.getElementById(id)
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c])
+const hhmm = t => new Date(t).toLocaleTimeString('it-IT')
+const dur = ms => ms == null ? '…' : ms < 1000 ? `${ms}ms` : ms < 60000 ? `${(ms / 1000).toFixed(1)}s` : `${Math.floor(ms / 60000)}m ${Math.round(ms % 60000 / 1000)}s`
+const agentName = a => a.id === 'main' ? '👑 Principale' : `${a.type}${a.description ? ' · ' + a.description : ''}`
+
+let F = null, rev = '', hidden = new Set(), sel = null, focusFile = null, follow = true
+let view = { x: 40, y: 30, k: 1 }
+const params = new URLSearchParams(location.hash.slice(1))
+let onlyAgent = params.get('agent')
+
+// ---- live data: re-inject data.js every second, the page itself never reloads ----
+window.__FLOW = d => { const r = d.updated + ':' + d.events.length + ':' + d.events.filter(e => e.ms != null).length; if (r !== rev) { rev = r; F = d; render() } stamp(d.updated) }
+function poll() { const s = document.createElement('script'); s.src = 'data.js?' + Date.now(); s.onload = s.onerror = () => s.remove(); document.body.appendChild(s) }
+setInterval(poll, 1000); poll()
+function stamp(t) { const stale = Date.now() - t > 5000; $('live').classList.toggle('stale', stale); $('upd').textContent = stale ? `ultimo aggiornamento ${hhmm(t)}` : 'live' }
+
+// ---- layout: one lane per agent (children under their parent), x = order of calls ----
+function layout() {
+  const kids = id => F.agents.filter(a => a.parent === id && a.id !== id)
+  const order = []
+  const walk = (a, d) => { order.push({ a, d }); kids(a.id).sort((x, y) => x.start - y.start).forEach(c => walk(c, d + 1)) }
+  const main = F.agents.find(a => a.id === 'main')
+  if (main) walk(main, 0)
+  F.agents.filter(a => !order.some(o => o.a === a)).forEach(a => order.push({ a, d: 1 }))
+  const lanes = onlyAgent ? order.filter(o => o.a.id === onlyAgent || isDesc(o.a, onlyAgent)) : order
+  const evs = F.events.filter(e => lanes.some(l => l.a.id === e.agent))
+  const X = new Map(); evs.forEach((e, i) => X.set(e.n, 190 + i * 44))
+  const Y = new Map(); lanes.forEach((l, i) => Y.set(l.a.id, i * 90 + 40))
+  return { lanes, evs, X, Y }
+}
+const isDesc = (a, id) => { let p = a; for (let i = 0; i < 20 && p; i++) { if (p.parent === id) return true; p = F.agents.find(x => x.id === p.parent) } return false }
+
+function render() {
+  if (!F) return
+  const files = F.files || []
+  $('sA').textContent = F.agents.length
+  $('sC').textContent = F.events.length
+  $('sF').textContent = files.filter(f => f.edits + f.writes).length
+  $('sE').textContent = F.events.filter(e => e.ok === false).length
+  drawGraph(); drawTimeline(); drawFiles(); drawLog(); if (sel) showDetail(sel, true)
+}
+
+function drawGraph() {
+  const { lanes, evs, X, Y } = layout()
+  const w = $('world'); let s = ''
+  if (!evs.length && !lanes.length) { w.innerHTML = ''; return }
+  const crucial = new Set((F.files || []).slice(0, 10).map(f => f.path))
+  // phase bands per lane
+  for (const l of lanes) {
+    const mine = evs.filter(e => e.agent === l.a.id); let run = null
+    const flush = () => { if (run && run.n > 1 || run && run.p !== 'esplora') s += `<rect x="${run.x0 - 20}" y="${Y.get(l.a.id) - 30}" width="${run.x1 - run.x0 + 40}" height="60" rx="10" fill="${col(run.c)}" opacity=".08"/><text x="${run.x0 - 14}" y="${Y.get(l.a.id) - 18}" fill="var(--dim)" font-size="10">${PHASE_ICON[run.p]}</text>` }
+    for (const e of mine) {
+      const p = PHASE[e.kind]
+      if (run && p === run.p) { run.x1 = X.get(e.n); run.n++; continue }
+      flush(); run = p ? { p, c: e.kind === 'write' ? 'edit' : e.kind, x0: X.get(e.n), x1: X.get(e.n), n: 1 } : null
+    }
+    flush()
+  }
+  // prompts as vertical markers
+  for (const p of F.prompts || []) {
+    const first = evs.find(e => e.t >= p.t); if (!first) continue
+    const x = X.get(first.n) - 22
+    s += `<line x1="${x}" x2="${x}" y1="0" y2="${lanes.length * 90 + 10}" stroke="var(--accent)" stroke-dasharray="3 5" opacity=".6"/><text x="${x + 4}" y="-4" fill="var(--accent)" font-size="11">💬 ${esc(p.text.slice(0, 40))}</text>`
+  }
+  // lanes, spawn and return edges
+  for (const l of lanes) {
+    const y = Y.get(l.a.id), mine = evs.filter(e => e.agent === l.a.id)
+    const xs = mine.map(e => X.get(e.n)), x1 = xs.length ? Math.max(...xs) : 190
+    s += `<line x1="170" x2="${x1}" y1="${y}" y2="${y}" stroke="var(--line)" stroke-width="2"/>`
+    const spawn = l.a.call && evs.find(e => e.call === l.a.call)
+    if (spawn && Y.has(spawn.agent)) {
+      const sx = X.get(spawn.n), sy = Y.get(spawn.agent), tx = xs.length ? Math.min(...xs) : sx + 40
+      s += `<path d="M${sx},${sy + 10} C${sx},${y} ${tx - 30},${y} ${tx - 12},${y}" fill="none" stroke="var(--agent)" stroke-width="2" opacity=".7"/>`
+      if (l.a.end && xs.length) {
+        const back = evs.find(e => e.agent === spawn.agent && e.t >= l.a.end)
+        const bx = back ? X.get(back.n) : sx + 22
+        s += `<path d="M${x1 + 12},${y} C${x1 + 50},${y} ${bx},${y} ${bx},${sy + 12}" fill="none" stroke="var(--agent)" stroke-width="1.5" stroke-dasharray="4 4" opacity=".5"/>`
+      }
+    }
+  }
+  // agent nodes
+  for (const l of lanes) {
+    const y = Y.get(l.a.id), a = l.a
+    const dim = focusFile && !evs.some(e => e.agent === a.id && e.file === focusFile) ? ' dim' : ''
+    s += `<g class="node${dim}${sel?.a === a.id ? ' sel' : ''}" data-a="${esc(a.id)}"><rect x="10" y="${y - 20}" width="155" height="40" rx="8" fill="var(--panel)" stroke="${a.status === 'running' ? 'var(--write)' : 'var(--line)'}" stroke-width="2"/>
+      <text x="20" y="${y - 3}" fill="var(--text)" font-size="12" font-weight="600">${esc((a.id === 'main' ? '👑 Principale' : a.type).slice(0, 20))}</text>
+      <text x="20" y="${y + 12}" fill="var(--dim)" font-size="10">${esc(STATUS[a.status] || a.status)} · ${esc((a.description || '').slice(0, 14))}</text></g>`
+  }
+  // call nodes
+  for (const e of evs) {
+    const x = X.get(e.n), y = Y.get(e.agent)
+    const dim = hidden.has(e.kind) || (focusFile && e.file !== focusFile) ? ' dim' : ''
+    const ring = e.ok === false ? `<circle r="14" fill="none" stroke="var(--err)" stroke-width="2"/>` : e.ms == null ? `<circle r="14" fill="none" stroke="${col(e.kind)}" stroke-width="2" stroke-dasharray="4 3"><animateTransform attributeName="transform" type="rotate" from="0" to="360" dur="2s" repeatCount="indefinite"/></circle>` : ''
+    const star = e.file && crucial.has(e.file) && (e.kind === 'edit' || e.kind === 'write') ? `<text x="8" y="-9" font-size="10">⭐</text>` : ''
+    s += `<g class="node${dim}${sel?.n === e.n ? ' sel' : ''}" data-n="${e.n}" transform="translate(${x},${y})">${ring}<circle r="10" fill="${col(e.kind)}"/>
+      <text text-anchor="middle" y="4" font-size="10" font-weight="700" fill="#0d1117">${KINDS[e.kind][1]}</text>${star}
+      <text text-anchor="middle" y="27" font-size="9" fill="var(--dim)">${esc(short(e))}</text><title>${esc(e.tool + ': ' + e.hint)}</title></g>`
+  }
+  w.innerHTML = s
+  if (follow && evs.length) { const last = evs[evs.length - 1]; const r = $('svg').getBoundingClientRect(); view.x = Math.min(40, r.width - 120 - X.get(last.n) * view.k); apply() }
+}
+const short = e => { const f = e.file || e.hint; const b = f.split(/[\\/]/).pop(); return (e.file ? b : e.tool).slice(0, 10) }
+
+// ---- pan / zoom ----
+const svg = $('svg'), cv = $('canvas')
+function apply() { $('world').setAttribute('transform', `translate(${view.x},${view.y}) scale(${view.k})`) }
+svg.addEventListener('wheel', ev => {
+  ev.preventDefault(); const r = svg.getBoundingClientRect(), mx = ev.clientX - r.left, my = ev.clientY - r.top
+  const k = Math.min(3, Math.max(.15, view.k * (ev.deltaY < 0 ? 1.12 : 1 / 1.12)))
+  view.x = mx - (mx - view.x) * k / view.k; view.y = my - (my - view.y) * k / view.k; view.k = k; setFollow(false); apply()
+}, { passive: false })
+let drag = null
+svg.addEventListener('pointerdown', ev => { drag = { x: ev.clientX, y: ev.clientY, vx: view.x, vy: view.y, moved: false }; cv.classList.add('drag') })
+addEventListener('pointermove', ev => { if (!drag) return; const dx = ev.clientX - drag.x, dy = ev.clientY - drag.y; if (Math.abs(dx) + Math.abs(dy) > 3) { drag.moved = true; setFollow(false) } view.x = drag.vx + dx; view.y = drag.vy + dy; apply() })
+addEventListener('pointerup', ev => {
+  if (drag && !drag.moved) { const g = ev.target.closest?.('.node'); if (g) select(g.dataset.n ? { n: +g.dataset.n } : { a: g.dataset.a }); else { focusFile = null; drawGraph() } }
+  drag = null; cv.classList.remove('drag')
+})
+function setFollow(on) { follow = on; $('follow').classList.toggle('on', on) }
+$('follow').onclick = () => { setFollow(!follow); drawGraph() }
+$('fit').onclick = () => {
+  const b = $('world').getBBox(), r = svg.getBoundingClientRect(); if (!b.width) return
+  view.k = Math.min(2, (r.width - 40) / b.width, (r.height - 40) / b.height); view.x = 20 - b.x * view.k; view.y = 20 - b.y * view.k; setFollow(false); apply()
+}
+
+// ---- legend filters ----
+$('legend').innerHTML = Object.entries(KINDS).map(([k, [l]]) => `<button data-k="${k}"><i style="background:${col(k)}"></i>${l}</button>`).join('')
+$('legend').onclick = ev => { const b = ev.target.closest('button'); if (!b) return; const k = b.dataset.k; hidden.has(k) ? hidden.delete(k) : hidden.add(k); b.classList.toggle('off'); drawGraph() }
+
+// ---- tabs ----
+document.querySelector('.tabs').onclick = ev => { const b = ev.target.closest('button'); if (b) tab(b.dataset.tab) }
+function tab(t) { document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === t)); document.querySelectorAll('.pane').forEach(p => p.classList.toggle('on', p.id === t)) }
+
+// ---- detail ----
+function select(s) { sel = s; showDetail(s); drawGraph(); tab('detail') }
+function diff(o, n) { return (o ? o.split('\n').map(l => `<span class="del">- ${esc(l)}</span>`).join('') : '') + (n ? n.split('\n').map(l => `<span class="add">+ ${esc(l)}</span>`).join('') : '') }
+function showDetail(s, quiet) {
+  const d = $('detail')
+  if (s.n != null) {
+    const e = F.events.find(x => x.n === s.n); if (!e) return
+    const a = F.agents.find(x => x.id === e.agent)
+    const child = e.call && F.agents.find(x => x.call === e.call)
+    d.innerHTML = `<div style="display:flex;gap:8px;align-items:center"><span class="badge" style="border-color:${col(e.kind)};color:${col(e.kind)}">${KINDS[e.kind][0]}</span><b>${esc(e.tool)}</b>
+      <span style="margin-left:auto" class="badge" ${e.ok === false ? 'style="color:var(--err)"' : ''}>${e.ok === false ? '✖ errore' : e.ms == null ? '● in corso' : '✔ ok'} · ${dur(e.ms)}</span></div>
+      <div class="k">Agente</div><a data-a="${esc(e.agent)}">${esc(a ? agentName(a) : e.agent)}</a>
+      <div class="k">Quando</div>${hhmm(e.t)} · chiamata #${e.n}
+      ${e.file ? `<div class="k">File</div><a data-f="${esc(e.file)}">${esc(e.file)}</a>` : ''}
+      ${child ? `<div class="k">Subagent lanciato</div><a data-a="${esc(child.id)}">${esc(agentName(child))}</a>` : ''}
+      <div class="k">Argomento</div><pre>${esc(e.hint)}</pre>
+      ${e.tool === 'Edit' || e.tool === 'Write' ? `<div class="k">${e.tool === 'Edit' ? 'Diff' : 'Contenuto (inizio)'}</div><pre>${diff(e.old, e.new)}</pre>` : e.old ? `<div class="k">Comando</div><pre>${esc(e.old)}</pre>` : ''}
+      ${e.out ? `<div class="k">Risultato (inizio)</div><pre>${esc(e.out)}</pre>` : ''}`
+  } else {
+    const a = F.agents.find(x => x.id === s.a); if (!a) return
+    const mine = F.events.filter(e => e.agent === a.id)
+    const touched = [...new Set(mine.filter(e => e.file).map(e => e.file))]
+    const parent = F.agents.find(x => x.id === a.parent)
+    const counts = Object.keys(KINDS).map(k => [k, mine.filter(e => e.kind === k).length]).filter(([, c]) => c)
+    d.innerHTML = `<b style="font-size:14px">${esc(agentName(a))}</b>
+      <div class="k">Stato</div>${esc(STATUS[a.status] || a.status)} · iniziato ${hhmm(a.start)}${a.end ? ` · durata ${dur(a.end - a.start)}` : ''}${a.model ? ` · ${esc(a.model)}` : ''}
+      ${parent && a.id !== 'main' ? `<div class="k">Lanciato da</div><a data-a="${esc(parent.id)}">${esc(agentName(parent))}</a>` : ''}
+      <div class="k">Chiamate (${mine.length})</div>${counts.map(([k, c]) => `<span class="badge" style="color:${col(k)}">${KINDS[k][0]} ${c}</span>`).join(' ')}
+      <div class="k">File toccati (${touched.length})</div>${touched.map(f => `<div><a data-f="${esc(f)}">${esc(f)}</a></div>`).join('') || '—'}
+      <div class="k">Vista</div><a data-only="${esc(a.id)}">${onlyAgent === a.id ? 'mostra tutti gli agenti' : 'mostra solo questo agente e i suoi subagent'}</a>`
+  }
+  if (!quiet) d.scrollTop = 0
+}
+document.body.addEventListener('click', ev => {
+  const t = ev.target.closest('[data-a],[data-f],[data-only],[data-sel]'); if (!t || t.closest('svg')) return
+  if (t.dataset.f) { focusFile = focusFile === t.dataset.f ? null : t.dataset.f; drawGraph(); drawFiles(); return }
+  if (t.dataset.only) { onlyAgent = onlyAgent === t.dataset.only ? null : t.dataset.only; location.hash = onlyAgent ? 'agent=' + onlyAgent : ''; render(); $('fit').click(); return }
+  if (t.dataset.sel) return select({ n: +t.dataset.sel })
+  select({ a: t.dataset.a })
+})
+
+// ---- files: crucial top + heatmap grouped by folder ----
+function drawFiles() {
+  const files = F.files || []
+  if (!files.length) { $('files').innerHTML = '<div class="empty">Nessun file toccato finora.</div>'; return }
+  const max = files[0].score || 1
+  const heat = s => `hsl(${30 - 30 * s / max}, 90%, ${35 + 25 * s / max}%)`
+  const row = f => `<div class="frow${focusFile === f.path ? ' on' : ''}" data-f="${esc(f.path)}"><span class="p" title="${esc(f.path)}">${esc(f.path.split('/').pop())}</span>
+    <span>${f.reads ? `<span style="color:var(--read)">R${f.reads}</span> ` : ''}${f.edits ? `<span style="color:var(--edit)">E${f.edits}</span> ` : ''}${f.writes ? `<span style="color:var(--write)">W${f.writes}</span>` : ''}</span>
+    <div class="bar" style="width:${Math.max(4, 100 * f.score / max)}%;background:${heat(f.score)}"></div><span class="why">${esc(f.why.join(' · ') || 'letto')}</span></div>`
+  const dirs = new Map(); files.forEach(f => { const d = f.path.includes('/') ? f.path.slice(0, f.path.lastIndexOf('/')) : '.'; dirs.set(d, [...(dirs.get(d) || []), f]) })
+  $('files').innerHTML = `<div class="k" style="margin-top:0">⭐ File cruciali</div>${files.slice(0, 10).map(row).join('')}
+    <div class="k">Mappa di calore per cartella</div>${[...dirs].sort((a, b) => b[1][0].score - a[1][0].score).map(([d, fs]) => `<div class="dir">📁 ${esc(d)}</div>${fs.map(row).join('')}`).join('')}
+    <div class="k">Legenda</div><span style="color:var(--read)">R</span> letto · <span style="color:var(--edit)">E</span> modificato · <span style="color:var(--write)">W</span> creato/riscritto. Clic su un file: evidenzia nel grafo le chiamate che lo toccano.`
+}
+
+// ---- transcript ----
+function drawLog() {
+  const rows = [
+    ...(F.prompts || []).map(p => ({ t: p.t, h: `<div class="log prompt"><span class="t">${hhmm(p.t)}</span><span>💬 ${esc(p.text)}</span></div>` })),
+    ...F.agents.filter(a => a.id !== 'main').map(a => ({ t: a.start, h: `<div class="log" data-a="${esc(a.id)}"><span class="t">${hhmm(a.start)}</span><span style="color:var(--agent)">🚀 parte ${esc(agentName(a))}</span></div>` })),
+    ...F.agents.filter(a => a.end && a.id !== 'main').map(a => ({ t: a.end, h: `<div class="log" data-a="${esc(a.id)}"><span class="t">${hhmm(a.end)}</span><span style="color:var(--agent)">↩ ${esc(STATUS[a.status])}: ${esc(a.type)}</span></div>` })),
+    ...F.events.map(e => ({ t: e.t, h: `<div class="log" data-sel="${e.n}"><span class="t">${hhmm(e.t)}</span><span><b style="color:${col(e.kind)}">${esc(e.tool)}</b> ${esc(e.file || e.hint).slice(0, 90)}${e.ok === false ? ' <span style="color:var(--err)">✖</span>' : ''}</span></div>` })),
+  ].sort((a, b) => a.t - b.t)
+  const p = $('log'), atEnd = p.scrollHeight - p.scrollTop - p.clientHeight < 40
+  p.innerHTML = rows.map(r => r.h).join('') || '<div class="empty">Ancora niente.</div>'
+  if (atEnd) p.scrollTop = p.scrollHeight
+}
+
+// ---- timeline: real time, one bar per agent ----
+function drawTimeline() {
+  const { lanes, evs } = layout(), box = $('timeline')
+  if (!evs.length) { box.innerHTML = '<div class="empty">La timeline compare alla prima chiamata.</div>'; return }
+  const t0 = Math.min(...lanes.map(l => l.a.start), evs[0].t), t1 = Math.max(Date.now() - 0, ...evs.map(e => e.t + (e.ms || 0)))
+  const W = Math.max(box.clientWidth - 20, 600), L = 160, sx = t => L + (W - L - 10) * (t - t0) / Math.max(1, t1 - t0), H = 20
+  let s = ''
+  for (let i = 0; i <= 6; i++) { const t = t0 + (t1 - t0) * i / 6; s += `<line x1="${sx(t)}" x2="${sx(t)}" y1="14" y2="${lanes.length * H + 20}" stroke="var(--line)"/><text x="${sx(t) + 3}" y="11" fill="var(--dim)" font-size="10">${hhmm(t)}</text>` }
+  for (const p of F.prompts || []) if (p.t >= t0) s += `<line x1="${sx(p.t)}" x2="${sx(p.t)}" y1="14" y2="${lanes.length * H + 20}" stroke="var(--accent)" stroke-dasharray="2 3"><title>${esc(p.text)}</title></line>`
+  lanes.forEach((l, i) => {
+    const y = 18 + i * H, a = l.a
+    s += `<text x="${4 + l.d * 8}" y="${y + 13}" fill="var(--text)" font-size="11" style="cursor:pointer" data-a="${esc(a.id)}">${esc((a.id === 'main' ? '👑 Principale' : a.type).slice(0, 20))}</text>`
+    if (a.id !== 'main') s += `<rect x="${sx(a.start)}" y="${y + 3}" width="${Math.max(2, sx(a.end || t1) - sx(a.start))}" height="${H - 6}" rx="3" fill="var(--agent)" opacity=".15"/>`
+    for (const e of evs.filter(e => e.agent === a.id)) s += `<rect data-sel="${e.n}" x="${sx(e.t)}" y="${y + 4}" width="${Math.max(3, sx(e.t + (e.ms ?? (Date.now() - e.t))) - sx(e.t))}" height="${H - 8}" rx="2" fill="${e.ok === false ? 'var(--err)' : col(e.kind)}" style="cursor:pointer"><title>${esc(e.tool + ': ' + (e.file || e.hint))} (${dur(e.ms)})</title></rect>`
+  })
+  box.innerHTML = `<svg width="${W}" height="${lanes.length * H + 26}">${s}</svg>`
+  box.querySelector('svg').onclick = ev => { const t = ev.target; if (t.dataset.sel) select({ n: +t.dataset.sel }); else if (t.dataset.a) select({ a: t.dataset.a }) }
+}
+addEventListener('resize', () => F && drawTimeline())
+</script>
+</body>
+</html>

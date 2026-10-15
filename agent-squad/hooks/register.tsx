@@ -2,6 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
 import type { SquadAgent, SquadStatus } from '../types'
+import { flowAgent, flowCall, flowPrompt, flowStart, flowStatus, openFlow, openHistory } from './flow'
 
 const PANE = 'agent-squad'
 const TITLE = 'La Squadra'
@@ -164,10 +165,14 @@ export const reroll = (list: SquadAgent[], who = '', rand = Math.random): SquadA
 
 const order = (a: SquadAgent) => (a.id === MAIN ? 0 : a.status === 'running' ? 1 : a.status === 'idle' ? 2 : 3)
 
-export const register: Register = on => {
+export const register: Register = (on, options) => {
+  // How many past sessions keep their full flow; the rest keep only their history row.
+  const keep = Math.max(1, Math.round(Number(options.keepSessions) || 20))
+
   on('session.start', async ($, e, next) => {
-    await $.command.register({ name: 'squadra', description: 'Mostra il pannello con gli agenti al lavoro', argumentHint: '[pulisci | tombola [nome]]' })
+    await $.command.register({ name: 'squadra', description: 'Mostra il pannello con gli agenti al lavoro', argumentHint: '[flusso [nome] | storico | pulisci | tombola [nome]]' })
     void $.ui.open({ id: PANE, title: TITLE, columns: 46 })
+    await flowStart($, keep)
     $.clock.every(1000, async () => {
       if ((await read($, agents)).some(a => a.status === 'running')) {
         const t = await $.clock.now()
@@ -187,6 +192,18 @@ export const register: Register = on => {
       if (!target) return { text: 'Tombola! Nuovi nomi estratti per tutta la squadra, capo escluso.' }
       return { text: `Ambo! ${target.name} ora si chiama ${out.find(a => a.id === target.id)?.name}.` }
     }
+    if (sub === 'flusso') {
+      const who = rest.join(' ')
+      const target = who ? (await read($, agents)).find(a => a.name.toLowerCase() === who.toLowerCase()) : undefined
+      if (who && !target) return { text: `Nessun agente si chiama ${who}.` }
+      const missed = await openFlow($, target?.id)
+      if (missed) return { text: `Non riesco ad aprire il browser, apri a mano: ${missed}` }
+      return { text: target ? `Flusso di ${target.name} aperto nel browser.` : 'Flusso della sessione aperto nel browser.' }
+    }
+    if (sub === 'storico') {
+      const missed = await openHistory($)
+      return { text: missed ? `Non riesco ad aprire il browser, apri a mano: ${missed}` : 'Storico delle sessioni aperto nel browser.' }
+    }
     if (sub === 'pulisci') {
       await update($, agents, list => list.filter(a => a.id === MAIN || a.status === 'running'))
       return { text: 'Squadra ripulita: restano solo gli agenti al lavoro.' }
@@ -198,6 +215,14 @@ export const register: Register = on => {
   on('agent.spawn', async ($, e, next) => {
     const started = await next(e)
     if (started.agentId) {
+      await flowAgent($, {
+        id: started.agentId,
+        parent: e.parentAgentId ?? MAIN,
+        call: e.tool_use_id,
+        type: e.subagentType,
+        description: e.description,
+        model: started.model,
+      })
       await start($, started.agentId, {
         type: e.subagentType,
         description: e.description,
@@ -218,6 +243,14 @@ export const register: Register = on => {
       await touch($, id, () => ({ type: info.type, description: info.description }))
     }
     await start($, id, { activity: describe(e) })
+    const finish = await flowCall($, e as unknown as Record<string, unknown>)
+    const ran = await next(e)
+    await finish(ran)
+    return ran
+  })
+
+  on('prompt.submit', async ($, e, next) => {
+    if (!e.isMeta && !e.command) await flowPrompt($, e.text)
     return next(e)
   })
 
@@ -234,6 +267,7 @@ export const register: Register = on => {
 
   on('turn.start', async ($, e, next) => {
     await start($, MAIN, { activity: 'Ci sta pensando…' })
+    await flowStatus($, MAIN, 'running', false)
     return next(e)
   })
 
@@ -244,11 +278,12 @@ export const register: Register = on => {
       const t = await $.clock.now()
       await touch($, id, a => ({ ...ended(a, e.reason), since: undefined, lastMs: e.durationMs || (a.since ? t - a.since : a.lastMs) }))
     }
+    await flowStatus($, id, id === MAIN ? 'idle' : e.reason === 'answer' ? 'completed' : e.reason === 'aborted' ? 'killed' : 'failed', true)
     return next(e)
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
-    const { Box, Text } = $.ui.resolve(e)
+    const { Box, Text, Button } = $.ui.resolve(e)
     const list = [...(await read($, agents))].sort((a, b) => order(a) - order(b))
     const busy = list.filter(a => a.status === 'running').length
     await read($, now) // subscribes the pane to the ticks
@@ -259,8 +294,11 @@ export const register: Register = on => {
 
     return (
       <Box flexDirection="column">
-        <Text bold color="claude">⚡ La Squadra</Text>
-        <Text dimColor wrap="wrap">{busy} al lavoro · {list.length - busy} a riposo</Text>
+        <Box justifyContent="space-between" flexWrap="wrap" columnGap={1}>
+          <Text bold color="claude">⚡ La Squadra</Text>
+          <Button key="flow" plain dimColor onPress={() => void openFlow($)}>🗺 Flusso</Button>
+        </Box>
+        <Text dimColor wrap="wrap">{busy} al lavoro · {list.length - busy} a riposo · clic su un nome per il suo flusso</Text>
         {list.length === 0 && <Text dimColor>Nessun agente in campo.</Text>}
         {list.map(a => {
           const r = roleOf(a.type, a.description)
@@ -270,7 +308,10 @@ export const register: Register = on => {
               {/* Wraps instead of truncating: in a narrow pane the status drops below the name. */}
               <Box flexWrap="wrap" justifyContent="space-between" columnGap={1}>
                 <Box flexWrap="wrap" flexShrink={1}>
-                  <Text bold wrap="wrap">{r.logo} {a.name}</Text>
+                  {/* A click opens this agent's flow in the browser. */}
+                  <Button key={`flow:${a.id}`} plain onPress={() => void openFlow($, a.id)}>
+                    <Text bold wrap="wrap">{r.logo} {a.name}</Text>
+                  </Button>
                   {a.model && <Text color="suggestion" wrap="wrap"> · {shortModel(a.model)}</Text>}
                   {a.effort && <Text color="warning" wrap="wrap"> · {a.effort}</Text>}
                 </Box>
