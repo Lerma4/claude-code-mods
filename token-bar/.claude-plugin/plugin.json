@@ -1,1 +1,1 @@
-{ "name": "token-bar", "version": "0.1.0", "description": "Bar above the prompt showing account usage (5h and 7-day limits), context and cost", "types": "./types/index.d.ts" }
+{ "name": "token-bar", "version": "0.3.0", "description": "Bar above the prompt showing account usage (5h and 7-day limits), context, cost, model, effort and login token expiry", "types": "./types/index.d.ts" }

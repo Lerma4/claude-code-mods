@@ -5,6 +5,10 @@ export type Snapshot = {
   contextTokens?: number
   contextWindow: number
   usd?: number
+  model?: string
+  effort?: string | number
+  tokenExpiresAt?: string
+  refreshExpiresAt?: string
 }
 
 declare module 'claude-code' {
