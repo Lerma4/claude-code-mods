@@ -1,6 +1,6 @@
 {
   "name": "agent-squad",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Side pane listing the agents at work, plus a live browser map of their flow, files touched and crucial files, with a history of past sessions",
   "types": "./types/index.d.ts",
   "userConfig": {

@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 
-import type { FileStat, Flow, FlowAgent, FlowEvent, FlowKind, FlowSummary, FlowTouch } from '../types'
+import type { FileStat, Flow, FlowAgent, FlowBeat, FlowEvent, FlowKind, FlowSummary, FlowTouch } from '../types'
 
 // The flow view: every tool call, spawn and prompt, dumped to data.js beside a static page
 // (viewer/index.html) that re-reads it every second in the browser.
@@ -16,6 +16,10 @@ const HISTORY = 'storico'
 const MAX_HISTORY = 1500
 const MAX_HISTORY_FILES = 50
 const HISTORY_EVERY_MS = 30_000
+// Every open session writes a heartbeat; the pages offer only the live ones as targets for a question.
+const BEAT_EVERY_MS = 5_000
+const ALIVE_MS = 15_000
+const BEAT_GONE_MS = 3_600_000
 const flow = atom({ plugin: 'agent-squad', key: 'flow' } as const, { agents: [], events: [], prompts: [], touches: [] } as Flow)
 
 const VERIFY = /\b(test|tests|pytest|vitest|jest|tsc|lint|eslint|build|mvn|gradle|cargo|go test|dotnet|npm run|pnpm|yarn|make)\b/i
@@ -124,6 +128,10 @@ export const toPrune = (dirs: readonly string[], history: readonly FlowSummary[]
     .slice(Math.max(0, keep - 1))
 }
 
+// Pure: the sessions whose heartbeat is recent, the newest first.
+export const alive = (beats: readonly FlowBeat[], now: number): FlowBeat[] =>
+  beats.filter(b => now - b.t < ALIVE_MS).sort((a, b) => b.t - a.t)
+
 // Module state: a reload starts these over, the flow itself lives in $.state.
 let root = ''
 let out = ''
@@ -131,6 +139,11 @@ let sessionId = ''
 let dirty = true
 let seq = 0
 let savedAt = 0
+let beatAt = 0
+let asking = false
+// Whether squadra:// is registered: without it the pages only copy the question and say how to link.
+let linked = false
+const PROTOCOL = 'HKCU\\Software\\Classes\\squadra'
 
 function patch($: EngineInterface, id: string, p: (a: FlowAgent) => Partial<FlowAgent>) {
   return update($, flow, f => ({ ...f, agents: f.agents.map(a => (a.id === id ? { ...a, ...p(a) } : a)) }))
@@ -162,13 +175,86 @@ async function dump($: EngineInterface, force = false) {
   dirty = false
   const f = await read($, flow)
   const now = await $.clock.now()
-  const data = { ...f, touches: undefined, files: fileStats(f.touches), cwd: await $.session.cwd(), updated: now }
+  const data = { ...f, id: sessionId, project: await $.session.root(), touches: undefined, files: fileStats(f.touches), cwd: await $.session.cwd(), updated: now }
   await $.fs.write(`${out}/data.js`, `window.__FLOW(${JSON.stringify(data)})`)
   if (force || now - savedAt > HISTORY_EVERY_MS) await saveHistory($, f, now)
 }
 
+const win = (path: string) => path.replace(/\//g, '\\')
+
+// Tells the other sessions (and the pages) this one is open, and writes the list of open ones.
+async function beat($: EngineInterface) {
+  const now = await $.clock.now()
+  if (now - beatAt < BEAT_EVERY_MS) return
+  beatAt = now
+  const f = await read($, flow)
+  const me: FlowBeat = { id: sessionId, project: await $.session.root(), prompt: f.prompts.at(-1)?.text.slice(0, 120), t: now }
+  await $.fs.write(`${root}/vive/${sessionId}.json`, JSON.stringify(me))
+  const beats: FlowBeat[] = []
+  for (const e of await $.fs.list(`${root}/vive`)) {
+    if (e.kind !== 'file') continue
+    try {
+      const b = JSON.parse(await $.fs.read(`${root}/vive/${e.name}`)) as FlowBeat
+      if (now - b.t > BEAT_GONE_MS) await $.process.run(['cmd', '/c', 'del', '/q', win(`${root}/vive/${e.name}`)])
+      else beats.push(b)
+    } catch {
+      // A beat caught half written: the next round reads it.
+    }
+  }
+  await $.fs.write(`${root}/vive.js`, `window.__VIVE(${JSON.stringify(alive(beats, now))}, ${linked})`)
+}
+
+// Questions sent from the pages (squadra:// links, see viewer/chiedi.ps1) land in this session's
+// inbox; each goes into the prompt box once the session is idle. Never submitted: the person sends it.
+async function inbox($: EngineInterface) {
+  const dir = `${out}/chiedi`
+  if (asking || !(await $.fs.exists(dir))) return
+  const names = (await $.fs.list(dir)).filter(e => e.kind === 'file').map(e => e.name).sort()
+  if (!names.length || (await read($, flow)).agents.find(a => a.id === MAIN)?.status === 'running') return
+  asking = true
+  try {
+    for (const name of names) {
+      // Keeps the trailing space of 'Domanda: ', so typing goes straight on.
+      const text = (await $.fs.read(`${dir}/${name}`)).replace(/^\s+/, '')
+      const draft = (await $.prompt.read()).text
+      if (text.trim() && !(await $.prompt.fill(draft.trim() ? { text: `\n${text}`, mode: 'append' } : { text })).isFilled) return
+      await $.process.run(['cmd', '/c', 'del', '/q', win(`${dir}/${name}`)])
+      if (text.trim()) $.ui.toast('💬 Domanda dal browser pronta nel prompt')
+    }
+  } finally {
+    asking = false
+  }
+}
+
+async function tick($: EngineInterface) {
+  await dump($)
+  await beat($)
+  await inbox($)
+}
+
+// Registers squadra:// for this Windows user (HKCU, no admin) to run viewer/chiedi.ps1.
+export async function link($: EngineInterface): Promise<string> {
+  const key = PROTOCOL
+  const command = `powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "${win(`${root}/chiedi.ps1`)}" "%1"`
+  for (const args of [[key, '/ve', '/d', 'URL:Squadra'], [key, '/v', 'URL Protocol', '/d', ''], [`${key}\\shell\\open\\command`, '/ve', '/d', command]]) {
+    const ran = await $.process.run(['reg', 'add', ...args, '/f'])
+    if (ran.exitCode !== 0) return ran.stderr.trim() || ran.stdout.trim() || 'reg add non riuscito'
+  }
+  linked = true
+  beatAt = 0
+  return ''
+}
+
+export async function unlink($: EngineInterface): Promise<string> {
+  const ran = await $.process.run(['reg', 'delete', PROTOCOL, '/f'])
+  if (ran.exitCode !== 0) return ran.stderr.trim() || 'reg delete non riuscito'
+  linked = false
+  beatAt = 0
+  return ''
+}
+
 async function launch($: EngineInterface, page: string): Promise<string> {
-  const path = page.replace(/\//g, '\\')
+  const path = win(page)
   const ran = await $.process.run(['cmd', '/c', 'start', '', path])
   return ran.exitCode === 0 ? '' : path
 }
@@ -199,8 +285,10 @@ export async function flowStart($: EngineInterface, keep: number) {
   out = `${root}/sessioni/${sessionId}`
   await $.fs.write(`${out}/index.html`, await $.fs.read(`${$.plugin.root}/viewer/index.html`))
   await $.fs.write(`${root}/index.html`, await $.fs.read(`${$.plugin.root}/viewer/storico.html`))
+  linked = (await $.process.run(['reg', 'query', `${PROTOCOL}\\shell\\open\\command`])).exitCode === 0
+  for (const name of ['chiedi.js', 'chiedi.ps1']) await $.fs.write(`${root}/${name}`, await $.fs.read(`${$.plugin.root}/viewer/${name}`))
   for (const old of toPrune(await detailed($), await history($), sessionId, keep)) {
-    await $.process.run(['cmd', '/c', 'rmdir', '/s', '/q', `${root}/sessioni/${old}`.replace(/\//g, '\\')])
+    await $.process.run(['cmd', '/c', 'rmdir', '/s', '/q', win(`${root}/sessioni/${old}`)])
   }
   // A flow kept from 0.5.0, before touches existed.
   if (!(await read($, flow)).touches) {
@@ -212,7 +300,7 @@ export async function flowStart($: EngineInterface, keep: number) {
     const t = await $.clock.now()
     await update($, flow, x => ({ ...x, agents: [{ id: MAIN, type: 'main', description: 'Sessione principale', start: t, status: 'idle' as const }, ...x.agents] }))
   }
-  $.clock.every(1000, () => dump($))
+  $.clock.every(1000, () => tick($))
 }
 
 export async function flowPrompt($: EngineInterface, text: string) {

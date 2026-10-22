@@ -87,6 +87,7 @@ a { color: var(--read); cursor: pointer; }
   </aside>
 </main>
 <div id="timeline"></div>
+<script src="../../chiedi.js"></script>
 <script>
 const KINDS = {
   read: ['Lettura', 'R'], search: ['Ricerca', 'S'], edit: ['Modifica', 'E'], write: ['Creazione', 'W'],
@@ -147,7 +148,7 @@ function drawGraph() {
   // phase bands per lane
   for (const l of lanes) {
     const mine = evs.filter(e => e.agent === l.a.id); let run = null
-    const flush = () => { if (run && run.n > 1 || run && run.p !== 'esplora') s += `<rect x="${run.x0 - 20}" y="${Y.get(l.a.id) - 30}" width="${run.x1 - run.x0 + 40}" height="60" rx="10" fill="${col(run.c)}" opacity=".08"/><text x="${run.x0 - 14}" y="${Y.get(l.a.id) - 18}" fill="var(--dim)" font-size="10">${PHASE_ICON[run.p]}</text>` }
+    const flush = () => { if (run && run.n > 1 || run && run.p !== 'esplora') s += `<rect x="${run.x0 - 20}" y="${Y.get(l.a.id) - 30}" width="${run.x1 - run.x0 + 40}" height="60" rx="10" fill="${col(run.c)}" opacity=".08"/><text x="${run.x0 - 14}" y="${Y.get(l.a.id) - 18}" fill="var(--dim)" font-size="10">${run.x1 - run.x0 + 40 < 80 ? PHASE_ICON[run.p].split(' ')[0] : PHASE_ICON[run.p]}<title>${run.p}</title></text>` }
     for (const e of mine) {
       const p = PHASE[e.kind]
       if (run && p === run.p) { run.x1 = X.get(e.n); run.n++; continue }
@@ -156,10 +157,18 @@ function drawGraph() {
     flush()
   }
   // prompts as vertical markers
+  // Prompts sent before the next call land on the same x: one marker for all of them.
+  const at = new Map()
   for (const p of F.prompts || []) {
     const first = evs.find(e => e.t >= p.t); if (!first) continue
-    const x = X.get(first.n) - 22
-    s += `<line x1="${x}" x2="${x}" y1="0" y2="${lanes.length * 90 + 10}" stroke="var(--accent)" stroke-dasharray="3 5" opacity=".6"/><text x="${x + 4}" y="-4" fill="var(--accent)" font-size="11">💬 ${esc(p.text.slice(0, 40))}</text>`
+    const x = X.get(first.n) - 22; at.set(x, [...(at.get(x) || []), p.text])
+  }
+  let prevX = -1e9, row = 0
+  for (const [x, texts] of [...at].sort((a, b) => a[0] - b[0])) {
+    // Close markers alternate between two rows so their labels do not overlap.
+    row = x - prevX < 300 ? 1 - row : 0; prevX = x
+    const last = texts[texts.length - 1], more = texts.length > 1 ? ` (+${texts.length - 1})` : ''
+    s += `<line x1="${x}" x2="${x}" y1="${-row * 14}" y2="${lanes.length * 90 + 10}" stroke="var(--accent)" stroke-dasharray="3 5" opacity=".6"/><text x="${x + 4}" y="${-4 - row * 14}" fill="var(--accent)" font-size="11">💬 ${esc(last.slice(0, 40))}${more}<title>${esc(texts.join('\n\n'))}</title></text>`
   }
   // lanes, spawn and return edges
   for (const l of lanes) {
@@ -240,7 +249,7 @@ function showDetail(s, quiet) {
     const a = F.agents.find(x => x.id === e.agent)
     const child = e.call && F.agents.find(x => x.call === e.call)
     d.innerHTML = `<div style="display:flex;gap:8px;align-items:center"><span class="badge" style="border-color:${col(e.kind)};color:${col(e.kind)}">${KINDS[e.kind][0]}</span><b>${esc(e.tool)}</b>
-      <span style="margin-left:auto" class="badge" ${e.ok === false ? 'style="color:var(--err)"' : ''}>${e.ok === false ? '✖ errore' : e.ms == null ? '● in corso' : '✔ ok'} · ${dur(e.ms)}</span></div>
+      <span style="margin-left:auto" class="badge" ${e.ok === false ? 'style="color:var(--err)"' : ''}>${e.ok === false ? '✖ errore' : e.ms == null ? '● in corso' : '✔ ok'} · ${dur(e.ms)}</span><button class="ask" data-ask="n" data-v="${e.n}" title="Fai una domanda su questa chiamata">💬</button></div>
       <div class="k">Agente</div><a data-a="${esc(e.agent)}">${esc(a ? agentName(a) : e.agent)}</a>
       <div class="k">Quando</div>${hhmm(e.t)} · chiamata #${e.n}
       ${e.file ? `<div class="k">File</div><a data-f="${esc(e.file)}">${esc(e.file)}</a>` : ''}
@@ -254,7 +263,7 @@ function showDetail(s, quiet) {
     const touched = [...new Set(mine.filter(e => e.file).map(e => e.file))]
     const parent = F.agents.find(x => x.id === a.parent)
     const counts = Object.keys(KINDS).map(k => [k, mine.filter(e => e.kind === k).length]).filter(([, c]) => c)
-    d.innerHTML = `<b style="font-size:14px">${esc(agentName(a))}</b>
+    d.innerHTML = `<b style="font-size:14px">${esc(agentName(a))}</b> <button class="ask" data-ask="a" data-v="${esc(a.id)}" title="Fai una domanda sul lavoro di questo agente">💬</button>
       <div class="k">Stato</div>${esc(STATUS[a.status] || a.status)} · iniziato ${hhmm(a.start)}${a.end ? ` · durata ${dur(a.end - a.start)}` : ''}${a.model ? ` · ${esc(a.model)}` : ''}
       ${parent && a.id !== 'main' ? `<div class="k">Lanciato da</div><a data-a="${esc(parent.id)}">${esc(agentName(parent))}</a>` : ''}
       <div class="k">Chiamate (${mine.length})</div>${counts.map(([k, c]) => `<span class="badge" style="color:${col(k)}">${KINDS[k][0]} ${c}</span>`).join(' ')}
@@ -272,13 +281,33 @@ document.body.addEventListener('click', ev => {
 })
 
 // ---- files: crucial top + heatmap grouped by folder ----
+// 💬: the context of a call, an agent or a file, for a question in the terminal (chiedi.js).
+document.addEventListener('click', ev => {
+  const b = ev.target.closest('.ask'); if (!b || !F) return
+  const where = `in questa sessione (progetto ${F.project || F.cwd})`
+  let text = ''
+  if (b.dataset.ask === 'n') {
+    const e = F.events.find(x => x.n === +b.dataset.v); if (!e) return
+    const a = F.agents.find(x => x.id === e.agent)
+    text = `Riguardo alla chiamata #${e.n} ${e.tool}${e.file ? ` su ${e.file}` : ''} (${e.hint}) fatta da ${a ? agentName(a) : e.agent} alle ${hhmm(e.t)}, esito ${e.ok === false ? 'errore' : e.ms == null ? 'in corso' : 'ok'}, ${where}`
+  } else if (b.dataset.ask === 'a') {
+    const a = F.agents.find(x => x.id === b.dataset.v); if (!a) return
+    const mine = F.events.filter(e => e.agent === a.id)
+    text = `Riguardo al lavoro dell'agente ${agentName(a)} (${mine.length} chiamate, file toccati: ${[...new Set(mine.filter(e => e.file).map(e => e.file))].join(', ') || 'nessuno'}) ${where}`
+  } else {
+    const f = (F.files || []).find(x => x.path === b.dataset.v); if (!f) return
+    text = `Riguardo al file ${f.path} (${f.why.join(', ') || 'letto'}) ${where}`
+  }
+  chiedi(ev, `[Dalla Squadra] ${text}.\nDomanda: `, { id: F.id, project: F.project || F.cwd })
+}, true)
+
 function drawFiles() {
   const files = F.files || []
   if (!files.length) { $('files').innerHTML = '<div class="empty">Nessun file toccato finora.</div>'; return }
   const max = files[0].score || 1
   const heat = s => `hsl(${30 - 30 * s / max}, 90%, ${35 + 25 * s / max}%)`
   const row = f => `<div class="frow${focusFile === f.path ? ' on' : ''}" data-f="${esc(f.path)}"><span class="p" title="${esc(f.path)}">${esc(f.path.split('/').pop())}</span>
-    <span>${f.reads ? `<span style="color:var(--read)">R${f.reads}</span> ` : ''}${f.edits ? `<span style="color:var(--edit)">E${f.edits}</span> ` : ''}${f.writes ? `<span style="color:var(--write)">W${f.writes}</span>` : ''}</span>
+    <span>${f.reads ? `<span style="color:var(--read)">R${f.reads}</span> ` : ''}${f.edits ? `<span style="color:var(--edit)">E${f.edits}</span> ` : ''}${f.writes ? `<span style="color:var(--write)">W${f.writes}</span>` : ''}<button class="ask" data-ask="f" data-v="${esc(f.path)}" title="Fai una domanda su questo file">💬</button></span>
     <div class="bar" style="width:${Math.max(4, 100 * f.score / max)}%;background:${heat(f.score)}"></div><span class="why">${esc(f.why.join(' · ') || 'letto')}</span></div>`
   const dirs = new Map(); files.forEach(f => { const d = f.path.includes('/') ? f.path.slice(0, f.path.lastIndexOf('/')) : '.'; dirs.set(d, [...(dirs.get(d) || []), f]) })
   $('files').innerHTML = `<div class="k" style="margin-top:0">⭐ File cruciali</div>${files.slice(0, 10).map(row).join('')}

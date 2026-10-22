@@ -1,6 +1,6 @@
 import { describe as group, expect, test } from 'claude-code/testing'
 
-import { fileStats, kindOf, relPath, summarize, toEvent, toPrune } from '../hooks/flow'
+import { alive, fileStats, kindOf, relPath, summarize, toEvent, toPrune } from '../hooks/flow'
 import type { Flow, FlowEvent } from '../types'
 
 const ev = (n: number, kind: FlowEvent['kind'], file?: string, ok = true, agent = 'main'): FlowEvent =>
@@ -58,5 +58,10 @@ group('agent-squad flow', () => {
     expect(toPrune(['old', 'mid', 'new', 'cur'], h, 'cur', 2)).toEqual(['mid', 'old'])
     expect(toPrune(['old', 'cur'], h, 'cur', 20)).toEqual([])
     expect(toPrune(['unknown', 'new', 'cur'], h, 'cur', 2)).toEqual(['unknown'])
+  })
+
+  test('alive keeps recent heartbeats only, the newest first', async () => {
+    const b = (id: string, t: number) => ({ id, project: 'C:/p', t })
+    expect(alive([b('gone', 0), b('a', 90_000), b('b', 95_000)], 100_000).map(x => x.id)).toEqual(['b', 'a'])
   })
 })

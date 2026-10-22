@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
 import type { SquadAgent, SquadStatus } from '../types'
-import { flowAgent, flowCall, flowPrompt, flowStart, flowStatus, openFlow, openHistory } from './flow'
+import { flowAgent, flowCall, flowPrompt, flowStart, flowStatus, link, openFlow, openHistory, unlink } from './flow'
 
 const PANE = 'agent-squad'
 const TITLE = 'La Squadra'
@@ -170,7 +170,7 @@ export const register: Register = (on, options) => {
   const keep = Math.max(1, Math.round(Number(options.keepSessions) || 20))
 
   on('session.start', async ($, e, next) => {
-    await $.command.register({ name: 'squadra', description: 'Mostra il pannello con gli agenti al lavoro', argumentHint: '[flusso [nome] | storico | pulisci | tombola [nome]]' })
+    await $.command.register({ name: 'squadra', description: 'Mostra il pannello con gli agenti al lavoro', argumentHint: '[flusso [nome] | storico | collega | scollega | pulisci | tombola [nome]]' })
     void $.ui.open({ id: PANE, title: TITLE, columns: 46 })
     await flowStart($, keep)
     $.clock.every(1000, async () => {
@@ -203,6 +203,14 @@ export const register: Register = (on, options) => {
     if (sub === 'storico') {
       const missed = await openHistory($)
       return { text: missed ? `Non riesco ad aprire il browser, apri a mano: ${missed}` : 'Storico delle sessioni aperto nel browser.' }
+    }
+    if (sub === 'collega') {
+      const failed = await link($)
+      return { text: failed ? `Collegamento non riuscito: ${failed}` : 'Collegato: i pulsanti 💬 delle pagine ora scrivono la domanda nel prompt della sessione giusta. /squadra scollega per toglierlo.' }
+    }
+    if (sub === 'scollega') {
+      const failed = await unlink($)
+      return { text: failed ? `Scollegamento non riuscito: ${failed}` : 'Scollegato: i pulsanti 💬 ora copiano solo la domanda negli appunti.' }
     }
     if (sub === 'pulisci') {
       await update($, agents, list => list.filter(a => a.id === MAIN || a.status === 'running'))

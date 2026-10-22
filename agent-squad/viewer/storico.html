@@ -25,7 +25,7 @@ main { max-width: 1100px; margin: 0 auto; padding: 12px 16px 40px; }
 .meta { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
 .chip { padding: 1px 7px; border: 1px solid var(--line); border-radius: 10px; color: var(--dim); font-size: 12px; white-space: nowrap; }
 .files { padding: 8px 12px 10px; }
-.f { display: grid; grid-template-columns: 1fr auto 90px; gap: 10px; padding: 3px 0; align-items: center; }
+.f { display: grid; grid-template-columns: 1fr auto 90px auto; gap: 10px; padding: 3px 0; align-items: center; }
 .f .p { font: 12px Consolas, monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; }
 .bar { height: 4px; border-radius: 2px; background: var(--edit); }
 a { color: var(--read); }
@@ -41,6 +41,7 @@ mark { background: #6e4a1e; color: inherit; border-radius: 2px; }
   <span class="dim" id="count"></span>
 </header>
 <main id="list"><div class="empty">Caricamento…</div></main>
+<script src="chiedi.js"></script>
 <script>
 const $ = id => document.getElementById(id)
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c])
@@ -83,13 +84,28 @@ function draw() {
       <span class="t">${new Date(r.start).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}</span>
       <span><span class="proj" title="${esc(r.project)}">${hl(base(r.project), q)}</span> <span class="prompt">${r.prompt ? '· ' + hl(r.prompt, q) : ''}</span></span>
       <span class="meta"><span class="chip">✏️ ${r.files.length} file</span><span class="chip">🤖 ${r.agents} agenti</span><span class="chip">${r.calls} chiamate</span><span class="chip">⏱ ${dur(r.updated - r.start)}</span>
+      <button class="ask" data-s="${esc(r.id)}" title="Fai una domanda su questa sessione">💬</button>
       ${r.detail ? `<a class="chip" style="color:var(--read)" href="sessioni/${encodeURIComponent(r.id)}/index.html">apri flusso →</a>` : '<span class="chip" title="Il dettaglio è stato cancellato: resta solo la lista dei file">solo file</span>'}</span>
     </summary><div class="files">${r.files.length ? r.files.map(f => `<div class="f"><span class="p" title="${esc(f.path)}">${hl(f.path, q)}</span>
       <span>${f.edits ? `<span style="color:var(--edit)">E${f.edits}</span> ` : ''}${f.writes ? `<span style="color:var(--write)">W${f.writes}</span>` : ''}</span>
-      <div class="bar" style="width:${Math.max(6, 100 * f.score / max)}%"></div></div>`).join('') : '<span class="dim">Nessun file modificato.</span>'}</div></details>`
+      <div class="bar" style="width:${Math.max(6, 100 * f.score / max)}%"></div>
+      <button class="ask" data-s="${esc(r.id)}" data-f="${esc(f.path)}" title="Fai una domanda su questo file">💬</button></div>`).join('') : '<span class="dim">Nessun file modificato.</span>'}</div></details>`
   }
   $('list').innerHTML = h
 }
+// 💬: the context of a session or of one of its files, for a question in the terminal (chiedi.js).
+const when = r => new Date(r.start).toLocaleString('it-IT', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' })
+const counts = f => [f.edits && `${f.edits} modifiche`, f.writes && `${f.writes} scritture`].filter(Boolean).join(', ')
+$('list').addEventListener('click', ev => {
+  const b = ev.target.closest('.ask'); if (!b) return
+  const r = ROWS.find(x => x.id === b.dataset.s); if (!r) return
+  const where = `nella sessione del ${when(r)} nel progetto ${r.project}${r.prompt ? ` (richiesta: "${r.prompt}")` : ''}`
+  const f = b.dataset.f && r.files.find(x => x.path === b.dataset.f)
+  const text = f
+    ? `[Dalla Squadra] Riguardo al file ${f.path}, ${counts(f)} ${where}.\nDomanda: `
+    : `[Dalla Squadra] Riguardo al lavoro fatto ${where}: ${r.agents} agenti, ${r.calls} chiamate, file modificati: ${r.files.map(x => x.path).join(', ') || 'nessuno'}.\nDomanda: `
+  chiedi(ev, text, { id: r.id, project: r.project })
+}, true)
 $('q').oninput = draw
 $('proj').onchange = draw
 $('list').addEventListener('toggle', ev => { const d = ev.target; if (d.dataset?.id) d.open ? open.add(d.dataset.id) : open.delete(d.dataset.id) }, true)

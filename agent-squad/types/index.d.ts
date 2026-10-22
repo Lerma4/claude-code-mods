@@ -66,6 +66,9 @@ export type FlowSummary = {
   files: { path: string; edits: number; writes: number; score: number }[]
 }
 
+// An open session's heartbeat: what the pages show when asking where a question goes.
+export type FlowBeat = { id: string; project: string; prompt?: string; t: number }
+
 export type FileStat = {
   path: string
   reads: number
