@@ -5,7 +5,7 @@ A growing collection of mods for [Claude Code](https://claude.com/claude-code).
 | Mod | What it does |
 |-----|--------------|
 | **agent-squad** | Side pane listing the agents at work: nickname, icon, role, status and current activity. `/squadra flusso` (or a click on an agent) opens a live map in the browser: call graph, timeline, files touched and crucial files. `/squadra storico` lists past sessions and the files each one changed. A 💬 button on sessions, files and calls puts a question about them in the prompt of the session that did the work (`/squadra collega` registers the `squadra://` link once). Windows only for now |
-| **token-bar** | Bar above the prompt showing account usage (5h and 7-day limits), context, cost, model, effort and login token expiry (🔑, read from `.credentials.json`; absent on macOS, where credentials live in the Keychain) |
+| **token-bar** | Bar above the prompt showing account usage (5h and 7-day limits), context, cost, model, effort and login expiry (🔑, read from `.credentials.json`; absent on macOS, where credentials live in the Keychain). Bars shrink with the terminal width and drop to bare percentages below 90 columns |
 
 The in-app labels are in Italian.
 

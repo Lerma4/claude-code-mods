@@ -7,7 +7,6 @@ export type Snapshot = {
   usd?: number
   model?: string
   effort?: string | number
-  tokenExpiresAt?: string
   refreshExpiresAt?: string
 }
 

@@ -6,7 +6,7 @@
   "plugins": [
     { "name": "agent-squad", "version": "0.7.0", "source": "./agent-squad",
       "description": "Side pane listing the agents at work, plus a live browser map of their flow, files touched and crucial files, with a history of past sessions" },
-    { "name": "token-bar", "version": "0.3.0", "source": "./token-bar",
-      "description": "Bar above the prompt showing account usage (5h and 7-day limits), context, cost, model, effort and login token expiry" }
+    { "name": "token-bar", "version": "0.4.0", "source": "./token-bar",
+      "description": "Bar above the prompt showing account usage (5h and 7-day limits), context, cost, model, effort and login expiry" }
   ]
 }
